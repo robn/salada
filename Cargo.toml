@@ -9,5 +9,9 @@ repository  = "https://github.com/robn/salada"
 [[bin]]
 name = "salada"
 
+[dependencies]
+hyper = "*"
+rustc-serialize = "*"
+
 [dependencies.jmap]
 git = "https://github.com/robn/jmap-rs"
