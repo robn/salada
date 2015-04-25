@@ -1,0 +1,13 @@
+[package]
+name        = "salada"
+version     = "0.0.1"
+description = "JMAP server"
+license     = "MIT"
+authors     = [ "Robert Norris <robn@robn.io>" ]
+repository  = "https://github.com/robn/salada"
+
+[[bin]]
+name = "salada"
+
+[dependencies.jmap]
+git = "https://github.com/robn/jmap-rs"
