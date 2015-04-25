@@ -10,7 +10,24 @@ use hyper::header;
 
 use rustc_serialize::json::Json;
 use jmap::util::FromJson;
-use jmap::method::RequestMethod;
+use jmap::method::RequestBatch;
+use jmap::method::RequestMethod::*;
+
+mod db;
+mod contact;
+
+fn jmap_handler(batch: RequestBatch) {
+    for method in batch.0.into_iter() {
+        match method {
+            GetContacts(args, client_id) =>
+                contact::get_contacts(args, client_id),
+            GetContactUpdates(args, client_id) =>
+                contact::get_contact_updates(args, client_id),
+            SetContacts(args, client_id) =>
+                contact::set_contacts(args, client_id),
+        }
+    }
+}
 
 fn http_handler(mut req: Request, mut res: Response) {
     res.headers_mut().set(header::Server("salada/0.0.1".to_string()));
@@ -22,9 +39,9 @@ fn http_handler(mut req: Request, mut res: Response) {
 
             (&Post, "/jmap") => {
                 match Json::from_reader(&mut req) {
-                    Ok(j) => match RequestMethod::from_json(&j) {
-                        Ok(m) => {
-                            println!("method: {:?}", m);
+                    Ok(j) => match RequestBatch::from_json(&j) {
+                        Ok(b) => {
+                            jmap_handler(b);
                             StatusCode::Ok
                         },
                         Err(e) => {
