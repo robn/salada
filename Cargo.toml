@@ -12,6 +12,7 @@ name = "salada"
 [dependencies]
 hyper = "*"
 rustc-serialize = "*"
+rusqlite = "*"
 
 [dependencies.jmap]
 git = "https://github.com/robn/jmap-rs"

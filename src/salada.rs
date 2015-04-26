@@ -1,5 +1,6 @@
 extern crate hyper;
 extern crate rustc_serialize;
+extern crate rusqlite;
 extern crate jmap;
 
 use hyper::server::{Request, Response};
