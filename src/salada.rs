@@ -3,6 +3,10 @@ extern crate rustc_serialize;
 extern crate rusqlite;
 extern crate jmap;
 
+mod db;
+mod util;
+mod contact;
+
 use std::default::Default;
 use std::io::Write;
 
@@ -18,20 +22,26 @@ use jmap::util::FromJson;
 use jmap::method::{RequestBatch, ResponseBatch};
 use jmap::method::RequestMethod::*;
 
-mod db;
-mod contact;
+use util::RequestContext;
+use contact::ContactHandler;
+use db::Db;
+
 
 fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
     let mut rbatch: ResponseBatch = ResponseBatch::default();
 
+    let r = RequestContext {
+        db: Db::open().unwrap(),
+    };
+
     for method in batch.0.into_iter() {
         rbatch.0.push(match method {
             GetContacts(args, client_id) =>
-                contact::get_contacts(args, client_id),
+                r.get_contacts(args, client_id),
             GetContactUpdates(args, client_id) =>
-                contact::get_contact_updates(args, client_id),
+                r.get_contact_updates(args, client_id),
             SetContacts(args, client_id) =>
-                contact::set_contacts(args, client_id),
+                r.set_contacts(args, client_id),
         });
     }
 
