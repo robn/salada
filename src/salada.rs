@@ -3,31 +3,59 @@ extern crate rustc_serialize;
 extern crate rusqlite;
 extern crate jmap;
 
+use std::default::Default;
+use std::io::Write;
+
 use hyper::server::{Request, Response};
 use hyper::method::Method::Post;
 use hyper::status::StatusCode;
 use hyper::uri::RequestUri::AbsolutePath;
 use hyper::header;
 
-use rustc_serialize::json::Json;
+use rustc_serialize::json::{Json,ToJson};
+
 use jmap::util::FromJson;
-use jmap::method::RequestBatch;
+use jmap::method::{RequestBatch, ResponseBatch};
 use jmap::method::RequestMethod::*;
 
 mod db;
 mod contact;
 
-fn jmap_handler(batch: RequestBatch) {
+fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
+    let mut rbatch: ResponseBatch = ResponseBatch::default();
+
     for method in batch.0.into_iter() {
-        match method {
+        rbatch.0.push(match method {
             GetContacts(args, client_id) =>
                 contact::get_contacts(args, client_id),
             GetContactUpdates(args, client_id) =>
                 contact::get_contact_updates(args, client_id),
             SetContacts(args, client_id) =>
                 contact::set_contacts(args, client_id),
-        }
+        });
     }
+
+    rbatch
+}
+
+fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
+    *res.status_mut() = code;
+
+    match res.start()
+        .and_then(|mut res|
+                  match body {
+                      Some(ref b) => {
+                          try!(res.write_all(b));
+                          Ok(res)
+                      }
+                      None => {
+                          Ok(res)
+                      }
+                  })
+        .and_then(|res| res.end()) {
+            Err(e) => println!("response error: {}", e),
+            _      => (),
+        };
 }
 
 fn http_handler(mut req: Request, mut res: Response) {
@@ -35,38 +63,32 @@ fn http_handler(mut req: Request, mut res: Response) {
 
     let uri = req.uri.clone();
 
-    *res.status_mut() = match uri {
+    match uri {
         AbsolutePath(ref path) => match (&req.method, &path[..]) {
 
             (&Post, "/jmap") => {
                 match Json::from_reader(&mut req) {
                     Ok(j) => match RequestBatch::from_json(&j) {
                         Ok(b) => {
-                            jmap_handler(b);
-                            StatusCode::Ok
+                            return finish_response(res, StatusCode::Ok, Some(jmap_handler(b).to_json().to_string().as_bytes()))
                         },
                         Err(e) => {
                             println!("jmap parse error: {}", e);
-                            StatusCode::BadRequest
+                            return finish_response(res, StatusCode::BadRequest, None)
                         },
                     },
                     Err(e) => {
                         println!("json parse error: {}", e);
-                        StatusCode::BadRequest
+                        return finish_response(res, StatusCode::BadRequest, None)
                     },
                 }
             },
 
-            (_, "/jmap") => StatusCode::MethodNotAllowed,
-            _            => StatusCode::NotFound,
+            (_, "/jmap") => return finish_response(res, StatusCode::MethodNotAllowed, None),
+            _            => return finish_response(res, StatusCode::NotFound, None),
         },
-        _ => StatusCode::BadRequest,
+        _ => return finish_response(res, StatusCode::BadRequest, None)
     };
-
-    match res.start().and_then(|res| res.end()) {
-        Err(e) => println!("response error: {}", e),
-        _      => (),
-    }
 }
 
 fn main() {
