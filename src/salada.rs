@@ -21,6 +21,7 @@ use rustc_serialize::json::{Json,ToJson};
 use jmap::util::FromJson;
 use jmap::method::{RequestBatch, ResponseBatch};
 use jmap::method::RequestMethod::*;
+use jmap::method::ResponseMethod::*;
 
 use util::RequestContext;
 use contact::ContactHandler;
@@ -42,6 +43,9 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
                 r.get_contact_updates(args, client_id),
             SetContacts(args, client_id) =>
                 r.set_contacts(args, client_id),
+
+            RequestError(args, client_id) =>
+                ResponseError(args, client_id),
         });
     }
 
