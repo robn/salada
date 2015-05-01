@@ -1,6 +1,8 @@
 use std::default::Default;
+use std::collections::HashSet;
 use jmap::method::*;
 use jmap::method::ResponseMethod::*;
+use jmap::util::Presence::*;
 
 use util::RequestContext;
 
@@ -12,17 +14,28 @@ pub trait ContactHandler {
 
 impl ContactHandler for RequestContext {
     fn get_contacts(&self, args: GetRequestArgs, client_id: String) -> ResponseMethod {
-        println!("get_contacts: {:?} {}", args, client_id);
+        let records = self.db.get_records(args.ids.as_option()).unwrap(); // XXX assuming success
 
-        let records = self.db.get_records(args.ids.as_option());
+        let not_found = match args.ids {
+            Absent => None,
+            Present(ids) => {
+                let mut found = HashSet::new();
+                for record in records.iter() {
+                    found.insert(&record.id);
+                }
+                let not_found = ids.into_iter().filter(|id| !found.contains(id)).collect::<Vec<_>>();
+                match not_found.len() {
+                    0 => None,
+                    _ => Some(not_found),
+                }
+            }
+        };
 
         let response = GetResponseArgs {
             state: "abc123".to_string(),
-            list: Some(records.unwrap().iter().map(|ref r| r.to_partial()).collect()),
-            not_found: None,
+            list: Some(records.iter().map(|ref r| r.to_partial()).collect()),
+            not_found: not_found,
         };
-
-        println!("{:?}", response);
 
         Contacts(response, client_id)
     }
