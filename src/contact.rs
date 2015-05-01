@@ -31,9 +31,14 @@ impl ContactHandler for RequestContext {
             }
         };
 
+        let list = match args.properties {
+            Absent     => Some(records.iter().map(|ref r| r.to_partial()).collect()),
+            Present(p) => Some(records.iter().map(|ref r| r.to_filtered_partial(&p)).collect()),
+        };
+
         let response = GetResponseArgs {
             state: "abc123".to_string(),
-            list: Some(records.iter().map(|ref r| r.to_partial()).collect()),
+            list: list,
             not_found: not_found,
         };
 
