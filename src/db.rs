@@ -112,7 +112,7 @@ impl Db {
         Ok(db)
     }
 
-    fn transaction(&self) -> Result<Transaction,DbError> {
+    pub fn transaction(&self) -> Result<Transaction,DbError> {
         match self.conn.transaction() {
             Ok(t) => Ok(t),
             Err(e) => Err(DbError::from(e)),
