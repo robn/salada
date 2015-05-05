@@ -1,5 +1,5 @@
 use rusqlite::{SqliteConnection, SqliteTransaction, SqliteError};
-use rusqlite::types::ToSql;
+use rusqlite::types::{ToSql, FromSql};
 use rustc_serialize::json::{Json, ParserError};
 use jmap::util::{FromJson, ParseError};
 use jmap::contact::Contact;
@@ -125,16 +125,31 @@ impl Db {
         Ok(true)
     }
 
+    fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,DbError> where T: FromSql {
+        let mut stmt = try!(self.conn.prepare(sql));
+        let mut res = try!(stmt.query(params));
+
+        match res.next() {
+            None       => Ok(None),
+            Some(next) =>
+                match next {
+                    Err(e)   => Err(InternalError(format!("sqlite: {}", e))),
+                    Ok(next) => {
+                        let v: T = next.get(0);
+                        Ok(Some(v))
+                    },
+            }
+        }
+    }
+
     fn version(&self) -> Result<u32,DbError> {
-        let mut stmt = try!(self.conn.prepare("PRAGMA user_version"));
-        let mut res = try!(stmt.query(&[]));
-        let next = try!(res.next().unwrap());
-        let v: i32 = next.get(0);
+        let v = try!(self.exec_value::<i32>("PRAGMA user_version", &[])).unwrap();
         Ok(v as u32)
     }
 
     fn set_version(&self, v: u32) -> Result<bool,DbError> {
-        self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref())
+        try!(self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref()));
+        Ok(true)
     }
 
     fn upgrade(&self) -> Result<bool,DbError> {
