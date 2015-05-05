@@ -181,6 +181,17 @@ impl Db {
         Ok(())
     }
 
+    pub fn get_state(&self, userid: i64) -> Result<String,DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        let params: Vec<&ToSql> = vec!(&userid, &objtype);
+        let sv = try!(self.exec_value::<i64>("SELECT modseq FROM modseq WHERE userid = ? AND type = ?", params.as_ref()));
+        match sv {
+            None    => Ok("0".to_string()),
+            Some(v) => Ok(v.to_string()),
+        }
+    }
+
     pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,DbError> {
         let objtype = 1; // XXX contacts are type 1 for now
 
