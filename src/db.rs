@@ -119,10 +119,10 @@ impl Db {
         }
     }
 
-    fn exec(&self, sql: &str) -> Result<bool,DbError> {
+    fn exec(&self, sql: &str) -> Result<(),DbError> {
         let mut stmt = try!(self.conn.prepare(sql));
         try!(stmt.execute(&[]));
-        Ok(true)
+        Ok(())
     }
 
     fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,DbError> where T: FromSql {
@@ -147,16 +147,16 @@ impl Db {
         Ok(v as u32)
     }
 
-    fn set_version(&self, v: u32) -> Result<bool,DbError> {
+    fn set_version(&self, v: u32) -> Result<(),DbError> {
         try!(self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref()));
-        Ok(true)
+        Ok(())
     }
 
-    fn upgrade(&self) -> Result<bool,DbError> {
+    fn upgrade(&self) -> Result<(),DbError> {
         let txn = try!(self.transaction());
 
         let ver = try!(self.version());
-        if ver == VERSION { return Ok(true) }
+        if ver == VERSION { return Ok(()) }
 
         // new database
         if ver == 0 {
@@ -178,7 +178,7 @@ impl Db {
 
         println!("upgraded db to version {}", VERSION);
 
-        Ok(true)
+        Ok(())
     }
 
     pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,DbError> {
