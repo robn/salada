@@ -32,6 +32,7 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
     let mut rbatch: ResponseBatch = ResponseBatch::default();
 
     let r = RequestContext {
+        userid: 1, // XXX get userid from auth
         db: Db::open().unwrap(),
     };
 

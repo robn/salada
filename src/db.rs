@@ -12,15 +12,39 @@ use std::path::Path;
 
 const VERSION: u32 = 1;
 
-const CREATE_SQL: &'static str = r###"
+const CREATE_SQL: [&'static str; 6] = [
+r###"
 CREATE TABLE records (
     rowid       INTEGER PRIMARY KEY,
     id          TEXT NOT NULL,
+    userid      INTEGER NOT NULL,
+    type        INTEGER NOT NULL,
+    modseq      INTEGER NOT NULL,
     json        TEXT NOT NULL,
-    UNIQUE( id )
+    UNIQUE( id, userid )
 );
-CREATE INDEX idx_record_id ON records ( id );
-"###;
+"###,
+r###"
+CREATE INDEX idx_record_id_userid          ON records ( id, userid );
+"###,
+r###"
+CREATE INDEX idx_record_userid_type        ON records ( userid, type );
+"###,
+r###"
+CREATE INDEX idx_record_userid_type_modseq ON records ( userid, type, modseq );
+"###,
+r###"
+CREATE TABLE modseq (
+    userid      INTEGER NOT NULL,
+    type        INTEGER NOT NULL,
+    modseq      INTEGER NOT NULL,
+    UNIQUE( userid, type )
+);
+"###,
+r###"
+CREATE INDEX idx_userid_type ON modseq ( userid, type );
+"###,
+];
 
 /*
 const UPGRADE_SQL: [&'static str; 1] = [
@@ -121,7 +145,9 @@ impl Db {
 
         // new database
         if ver == 0 {
-            try!(self.exec(CREATE_SQL));
+            for sql in CREATE_SQL.iter() {
+                try!(self.exec(sql));
+            }
         }
 
         /*
@@ -140,30 +166,33 @@ impl Db {
         Ok(true)
     }
 
-    pub fn get_records(&self, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,DbError> {
-        let mut sql = "SELECT json FROM records".to_string();
+    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ?".to_string();
+        let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
+
+
         if let Some(ref ids) = ids {
-            sql.push_str(" WHERE id IN ( ");
+            sql.push_str(" AND id IN ( ");
 
             let mut i = ids.iter();
-            if let Some(_) = i.next() {
+            if let Some(id) = i.next() {
                 sql.push_str("?");
+                params.push(id);
             }
-            for _ in i {
+            for id in i {
                 sql.push_str(",?");
+                params.push(id);
             }
 
             sql.push_str(" )");
         }
 
         let mut stmt = try!(self.conn.prepare(sql.as_ref()));
-        let res = match ids {
-            Some(ref ids) => try!(stmt.query(ids.iter().map(|s| s as &ToSql).collect::<Vec<&ToSql>>().as_ref())),
-            None          => try!(stmt.query(&[])),
-        };
+        let res = try!(stmt.query(params.as_ref()));
 
         let mut records: Vec<Contact> = Vec::new();
-
         for row in res {
             if let Ok(ref r) = row {
                 let json = try!(Json::from_str((r.get::<String>(0)).as_ref()));

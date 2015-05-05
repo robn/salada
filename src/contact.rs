@@ -14,7 +14,7 @@ pub trait ContactHandler {
 
 impl ContactHandler for RequestContext {
     fn get_contacts(&self, args: GetRequestArgs, client_id: String) -> ResponseMethod {
-        let records = self.db.get_records(args.ids.as_option()).unwrap(); // XXX assuming success
+        let records = self.db.get_records(self.userid, args.ids.as_option()).unwrap(); // XXX assuming success
 
         let not_found = match args.ids {
             Absent => None,
