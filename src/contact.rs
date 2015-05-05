@@ -14,7 +14,11 @@ pub trait ContactHandler {
 
 impl ContactHandler for RequestContext {
     fn get_contacts(&self, args: GetRequestArgs, client_id: String) -> ResponseMethod {
-        let records = self.db.get_records(self.userid, args.ids.as_option()).unwrap(); // XXX assuming success
+        // XXX assuming success through here
+        let txn = self.db.transaction().unwrap();
+        let records = self.db.get_records(self.userid, args.ids.as_option()).unwrap();
+        let state = self.db.get_state(self.userid).unwrap();
+        txn.commit().unwrap();
 
         let not_found = match args.ids {
             Absent => None,
@@ -37,7 +41,7 @@ impl ContactHandler for RequestContext {
         };
 
         let response = GetResponseArgs {
-            state: "abc123".to_string(),
+            state: state,
             list: list,
             not_found: not_found,
         };
