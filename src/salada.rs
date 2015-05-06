@@ -19,7 +19,8 @@ use hyper::header;
 use rustc_serialize::json::{Json,ToJson};
 
 use jmap::util::FromJson;
-use jmap::method::{RequestBatch, ResponseBatch};
+use jmap::util::Presence::*;
+use jmap::method::{RequestBatch, ResponseBatch, MethodError, ErrorDescription, ClientId};
 use jmap::method::RequestMethod::*;
 use jmap::method::ResponseMethod::*;
 
@@ -37,16 +38,17 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
     };
 
     for method in batch.0.into_iter() {
-        rbatch.0.push(match method {
-            GetContacts(args, client_id) =>
-                r.get_contacts(args, client_id),
-            GetContactUpdates(args, client_id) =>
-                r.get_contact_updates(args, client_id),
-            SetContacts(args, client_id) =>
-                r.set_contacts(args, client_id),
+        let res = match method {
+            GetContacts(ref args, ref id)       => r.get_contacts(args).map(|a| Contacts(a, id.clone())),
+            GetContactUpdates(ref args, ref id) => r.get_contact_updates(args).map(|a| ContactUpdates(a, id.clone())),
+            SetContacts(ref args, ref id)       => r.set_contacts(args).map(|a| ContactsSet(a, id.clone())),
 
-            RequestError(args, client_id) =>
-                ResponseError(args, client_id),
+            RequestError(ref args, ref id) => Ok(ResponseError(args.clone(), id.clone())),
+        };
+
+        rbatch.0.push(match res {
+            Ok(r)  => r,
+            Err(e) => ResponseError(MethodError::InternalError(Present(ErrorDescription(format!("{}", e)))), method.client_id()),
         });
     }
 
