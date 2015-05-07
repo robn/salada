@@ -100,7 +100,7 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn open() -> Result<Db,DbError> {
+    pub fn open() -> Result<Db,Box<Error>> {
         //let conn = try!(SqliteConnection::open_in_memory());
         let conn = try!(SqliteConnection::open(&Path::new("db.sqlite")));
         let db = Db {
@@ -112,20 +112,20 @@ impl Db {
         Ok(db)
     }
 
-    pub fn transaction(&self) -> Result<Transaction,DbError> {
+    pub fn transaction(&self) -> Result<Transaction,Box<Error>> {
         match self.conn.transaction() {
             Ok(t) => Ok(t),
-            Err(e) => Err(DbError::from(e)),
+            Err(e) => Err(Box::new(DbError::from(e))),
         }
     }
 
-    fn exec(&self, sql: &str) -> Result<(),DbError> {
+    fn exec(&self, sql: &str) -> Result<(),Box<Error>> {
         let mut stmt = try!(self.conn.prepare(sql));
         try!(stmt.execute(&[]));
         Ok(())
     }
 
-    fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,DbError> where T: FromSql {
+    fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,Box<Error>> where T: FromSql {
         let mut stmt = try!(self.conn.prepare(sql));
         let mut res = try!(stmt.query(params));
 
@@ -133,7 +133,7 @@ impl Db {
             None       => Ok(None),
             Some(next) =>
                 match next {
-                    Err(e)   => Err(InternalError(format!("sqlite: {}", e))),
+                    Err(e)   => Err(Box::new(InternalError(format!("sqlite: {}", e)))),
                     Ok(next) => {
                         let v: T = next.get(0);
                         Ok(Some(v))
@@ -142,17 +142,17 @@ impl Db {
         }
     }
 
-    fn version(&self) -> Result<u32,DbError> {
+    fn version(&self) -> Result<u32,Box<Error>> {
         let v = try!(self.exec_value::<i32>("PRAGMA user_version", &[])).unwrap();
         Ok(v as u32)
     }
 
-    fn set_version(&self, v: u32) -> Result<(),DbError> {
+    fn set_version(&self, v: u32) -> Result<(),Box<Error>> {
         try!(self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref()));
         Ok(())
     }
 
-    fn upgrade(&self) -> Result<(),DbError> {
+    fn upgrade(&self) -> Result<(),Box<Error>> {
         let txn = try!(self.transaction());
 
         let ver = try!(self.version());
@@ -181,7 +181,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn get_state(&self, userid: i64) -> Result<String,DbError> {
+    pub fn get_state(&self, userid: i64) -> Result<String,Box<Error>> {
         let objtype = 1; // XXX contacts are type 1 for now
 
         let params: Vec<&ToSql> = vec!(&userid, &objtype);
@@ -192,7 +192,7 @@ impl Db {
         }
     }
 
-    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,DbError> {
+    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,Box<Error>> {
         let objtype = 1; // XXX contacts are type 1 for now
 
         let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ?".to_string();

@@ -1,19 +1,19 @@
 use std::default::Default;
+use std::error::Error;
 use std::collections::HashSet;
 use jmap::method::*;
 use jmap::util::Presence::*;
 
 use util::RequestContext;
-use db::DbError;
 
 pub trait ContactHandler {
-    fn get_contacts(&self, args: &GetRequestArgs)               -> Result<GetResponseArgs,DbError>;
-    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,DbError>;
-    fn set_contacts(&self, args: &SetRequestArgs)               -> Result<SetResponseArgs,DbError>;
+    fn get_contacts(&self, args: &GetRequestArgs)               -> Result<GetResponseArgs,Box<Error>>;
+    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,Box<Error>>;
+    fn set_contacts(&self, args: &SetRequestArgs)               -> Result<SetResponseArgs,Box<Error>>;
 }
 
 impl ContactHandler for RequestContext {
-    fn get_contacts(&self, args: &GetRequestArgs) -> Result<GetResponseArgs,DbError> {
+    fn get_contacts(&self, args: &GetRequestArgs) -> Result<GetResponseArgs,Box<Error>> {
         // XXX assuming success through here
         let txn = self.db.transaction().unwrap();
         let records = self.db.get_records(self.userid, args.ids.as_option()).unwrap();
@@ -49,12 +49,12 @@ impl ContactHandler for RequestContext {
         Ok(response)
     }
 
-    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,DbError> {
+    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,Box<Error>> {
         println!("get_contact_updates: {:?}", args);
         Ok(GetUpdatesResponseArgs::default())
     }
 
-    fn set_contacts(&self, args: &SetRequestArgs) -> Result<SetResponseArgs,DbError> {
+    fn set_contacts(&self, args: &SetRequestArgs) -> Result<SetResponseArgs,Box<Error>> {
         println!("set_contacts: {:?}", args);
         Ok(SetResponseArgs::default())
     }
