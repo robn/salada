@@ -6,6 +6,7 @@ use jmap::contact::Contact;
 use std::error::Error;
 use std::convert::From;
 use std::fmt;
+use std::cmp;
 use self::DbError::*;
 
 use std::path::Path;
@@ -195,12 +196,13 @@ impl Db {
         }
     }
 
-    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>) -> Result<Vec<Contact>,Box<Error>> {
+    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,Box<Error>> {
         let objtype = 1; // XXX contacts are type 1 for now
+
+        let modseq: i64;
 
         let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ?".to_string();
         let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
-
 
         if let Some(ref ids) = ids {
             sql.push_str(" AND id IN ( ");
@@ -216,6 +218,17 @@ impl Db {
             }
 
             sql.push_str(" )");
+        }
+
+        if let Some(ref since_state) = since_state {
+            let parsed = since_state.parse::<i64>();
+            modseq = match parsed {
+                Err(_) => 0,
+                Ok(i)  => cmp::max(i,0),
+            };
+
+            sql.push_str(" AND modseq > ?");
+            params.push(&modseq);
         }
 
         let mut stmt = try!(self.conn.prepare(sql.as_ref()));
