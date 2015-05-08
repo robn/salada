@@ -143,8 +143,11 @@ impl Db {
     }
 
     fn version(&self) -> Result<u32,Box<Error>> {
-        let v = try!(self.exec_value::<i32>("PRAGMA user_version", &[])).unwrap();
-        Ok(v as u32)
+        let v = try!(self.exec_value::<i32>("PRAGMA user_version", &[]));
+        match v {
+            Some(v) => Ok(v as u32),
+            None    => Ok(0),
+        }
     }
 
     fn set_version(&self, v: u32) -> Result<(),Box<Error>> {
