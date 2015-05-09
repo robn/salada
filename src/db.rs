@@ -119,12 +119,12 @@ impl Db {
 
         match self.in_txn.get() {
             false => {
-                try!(self.exec("BEGIN DEFERRED"));
+                try!(self.exec("BEGIN DEFERRED", &[]));
                 self.in_txn.set(true);
                 nested = false;
             },
             true  => {
-                try!(self.exec("SAVEPOINT sp"));
+                try!(self.exec("SAVEPOINT sp", &[]));
                 nested = true;
             },
         };
@@ -134,26 +134,26 @@ impl Db {
         match r {
             Ok(_) => match nested {
                 false => {
-                    try!(self.exec("COMMIT"));
+                    try!(self.exec("COMMIT", &[]));
                     self.in_txn.set(false);
                 },
-                true => try!(self.exec("RELEASE sp")),
+                true => try!(self.exec("RELEASE sp", &[])),
             },
             Err(_) => match nested {
                 false => {
-                    try!(self.exec("ROLLBACK"));
+                    try!(self.exec("ROLLBACK", &[]));
                     self.in_txn.set(false);
                 },
-                true => try!(self.exec("ROLLBACK TO sp")),
+                true => try!(self.exec("ROLLBACK TO sp", &[])),
             },
         };
 
         r
     }
 
-    fn exec(&self, sql: &str) -> Result<(),Box<Error>> {
+    fn exec(&self, sql: &str, params: &[&ToSql]) -> Result<(),Box<Error>> {
         let mut stmt = try!(self.conn.prepare(sql));
-        try!(stmt.execute(&[]));
+        try!(stmt.execute(params));
         Ok(())
     }
 
@@ -183,7 +183,7 @@ impl Db {
     }
 
     fn set_version(&self, v: u32) -> Result<(),Box<Error>> {
-        try!(self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref()));
+        try!(self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref(), &[]));
         Ok(())
     }
 
@@ -195,7 +195,7 @@ impl Db {
             // new database
             if ver == 0 {
                 for sql in CREATE_SQL.iter() {
-                    try!(self.exec(sql));
+                    try!(self.exec(sql, &[]));
                 }
             }
 
