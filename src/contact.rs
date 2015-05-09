@@ -14,10 +14,12 @@ pub trait ContactHandler {
 
 impl ContactHandler for RequestContext {
     fn get_contacts(&self, args: &GetRequestArgs) -> Result<GetResponseArgs,Box<Error>> {
-        let txn = try!(self.db.transaction());
-        let records = try!(self.db.get_records(self.userid, args.ids.as_option(), args.since_state.as_option()));
-        let state = try!(self.db.get_state(self.userid));
-        try!(txn.commit());
+        let (records, state) = try!(self.db.transaction(|| {
+            Ok((
+                try!(self.db.get_records(self.userid, args.ids.as_option(), args.since_state.as_option())),
+                try!(self.db.get_state(self.userid)),
+            ))
+        }));
 
         let not_found = match args.ids {
             Absent => None,

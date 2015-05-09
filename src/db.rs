@@ -1,4 +1,4 @@
-use rusqlite::{SqliteConnection, SqliteTransaction, SqliteError};
+use rusqlite::{SqliteConnection, SqliteError};
 use rusqlite::types::{ToSql, FromSql};
 use rustc_serialize::json::{Json, ParserError};
 use jmap::util::{FromJson, ParseError};
@@ -93,8 +93,6 @@ impl From<ParseError> for DbError {
     }
 }
 
-pub type Transaction<'a> = SqliteTransaction<'a>;
-
 #[derive(Debug)]
 pub struct Db {
     conn: SqliteConnection,
@@ -113,11 +111,14 @@ impl Db {
         Ok(db)
     }
 
-    pub fn transaction(&self) -> Result<Transaction,Box<Error>> {
-        match self.conn.transaction() {
-            Ok(t) => Ok(t),
-            Err(e) => Err(Box::new(DbError::from(e))),
-        }
+    pub fn transaction<F,T>(&self, f: F) -> Result<T,Box<Error>> where F: Fn() -> Result<T,Box<Error>> {
+        let txn = try!(self.conn.transaction());
+        let r = f();
+        match r {
+            Ok(_)  => try!(txn.commit()),
+            Err(_) => try!(txn.rollback()),
+        };
+        r
     }
 
     fn exec(&self, sql: &str) -> Result<(),Box<Error>> {
@@ -157,32 +158,30 @@ impl Db {
     }
 
     fn upgrade(&self) -> Result<(),Box<Error>> {
-        let txn = try!(self.transaction());
+        self.transaction(|| {
+            let ver = try!(self.version());
+            if ver == VERSION { return Ok(()) }
 
-        let ver = try!(self.version());
-        if ver == VERSION { return Ok(()) }
-
-        // new database
-        if ver == 0 {
-            for sql in CREATE_SQL.iter() {
-                try!(self.exec(sql));
+            // new database
+            if ver == 0 {
+                for sql in CREATE_SQL.iter() {
+                    try!(self.exec(sql));
+                }
             }
-        }
 
-        /*
-        // existing database, upgrade required
-        else {
-            // XXX 
-        }
-        */
+            /*
+            // existing database, upgrade required
+            else {
+                // XXX 
+            }
+            */
 
-        try!(self.set_version(VERSION));
+            try!(self.set_version(VERSION));
 
-        try!(txn.commit());
+            println!("upgraded db to version {}", VERSION);
 
-        println!("upgraded db to version {}", VERSION);
-
-        Ok(())
+            Ok(())
+        })
     }
 
     pub fn get_state(&self, userid: i64) -> Result<String,Box<Error>> {
