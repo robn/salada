@@ -40,6 +40,7 @@ CREATE TABLE modseq (
     userid      INTEGER NOT NULL,
     type        INTEGER NOT NULL,
     modseq      INTEGER NOT NULL,
+    low_modseq  INTEGER NOT NULL,
     UNIQUE( userid, type )
 );
 "###,
@@ -57,12 +58,14 @@ const UPGRADE_SQL: [&'static str; 1] = [
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum DbError {
+    StateTooOld,
     InternalError(String),
 }
 
 impl Error for DbError {
     fn description(&self) -> &str {
         match *self {
+            StateTooOld      => "state too old",
             InternalError(_) => "internal database error",
         }
     }
@@ -71,6 +74,7 @@ impl Error for DbError {
 impl fmt::Display for DbError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
+            StateTooOld          => "state too old".to_string(),
             InternalError(ref e) => format!("internal database error: {}", e),
         }.to_string())
     }
@@ -228,49 +232,60 @@ impl Db {
     pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,Box<Error>> {
         let objtype = 1; // XXX contacts are type 1 for now
 
-        let modseq: i64;
+        self.transaction(|| {
+            let modseq: i64;
 
-        let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ?".to_string();
-        let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
+            let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ?".to_string();
+            let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
 
-        if let Some(ref ids) = ids {
-            sql.push_str(" AND id IN ( ");
+            if let Some(ref since_state) = since_state {
+                let parsed = since_state.parse::<i64>();
+                modseq = match parsed {
+                    Err(_) => 0,
+                    Ok(i)  => cmp::max(i,0),
+                };
 
-            let mut i = ids.iter();
-            if let Some(id) = i.next() {
-                sql.push_str("?");
-                params.push(id);
+                let mv = try!(self.exec_value::<i64>("SELECT low_modseq FROM modseq WHERE userid = ? AND type = ?", params.as_ref()));
+                let valid = match mv {
+                    None    => false,
+                    Some(v) => v <= modseq,
+                };
+                if let false = valid {
+                    return Err(Box::new(StateTooOld));
+                }
+
+                sql.push_str(" AND modseq > ?");
+                params.push(&modseq);
             }
-            for id in i {
-                sql.push_str(",?");
-                params.push(id);
+
+            if let Some(ref ids) = ids {
+                sql.push_str(" AND id IN ( ");
+
+                let mut i = ids.iter();
+                if let Some(id) = i.next() {
+                    sql.push_str("?");
+                    params.push(id);
+                }
+                for id in i {
+                    sql.push_str(",?");
+                    params.push(id);
+                }
+
+                sql.push_str(" )");
             }
 
-            sql.push_str(" )");
-        }
+            let mut stmt = try!(self.conn.prepare(sql.as_ref()));
+            let res = try!(stmt.query(params.as_ref()));
 
-        if let Some(ref since_state) = since_state {
-            let parsed = since_state.parse::<i64>();
-            modseq = match parsed {
-                Err(_) => 0,
-                Ok(i)  => cmp::max(i,0),
-            };
-
-            sql.push_str(" AND modseq > ?");
-            params.push(&modseq);
-        }
-
-        let mut stmt = try!(self.conn.prepare(sql.as_ref()));
-        let res = try!(stmt.query(params.as_ref()));
-
-        let mut records: Vec<Contact> = Vec::new();
-        for row in res {
-            if let Ok(ref r) = row {
-                let json = try!(Json::from_str((r.get::<String>(0)).as_ref()));
-                records.push(try!(Contact::from_json(&json)));
+            let mut records: Vec<Contact> = Vec::new();
+            for row in res {
+                if let Ok(ref r) = row {
+                    let json = try!(Json::from_str((r.get::<String>(0)).as_ref()));
+                    records.push(try!(Contact::from_json(&json)));
+                }
             }
-        }
 
-        Ok(records)
+            Ok(records)
+        })
     }
 }
