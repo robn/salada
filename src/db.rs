@@ -5,6 +5,7 @@ use jmap::util::{FromJson, ParseError};
 use jmap::contact::Contact;
 use std::error::Error;
 use std::convert::From;
+use std::cell::Cell;
 use std::fmt;
 use std::cmp;
 use self::DbError::*;
@@ -95,7 +96,8 @@ impl From<ParseError> for DbError {
 
 #[derive(Debug)]
 pub struct Db {
-    conn: SqliteConnection,
+    conn:   SqliteConnection,
+    in_txn: Cell<bool>,
 }
 
 impl Db {
@@ -103,7 +105,8 @@ impl Db {
         //let conn = try!(SqliteConnection::open_in_memory());
         let conn = try!(SqliteConnection::open(&Path::new("db.sqlite")));
         let db = Db {
-            conn: conn,
+            conn:   conn,
+            in_txn: Cell::new(false),
         };
 
         try!(db.upgrade());
@@ -112,12 +115,39 @@ impl Db {
     }
 
     pub fn transaction<F,T>(&self, f: F) -> Result<T,Box<Error>> where F: Fn() -> Result<T,Box<Error>> {
-        let txn = try!(self.conn.transaction());
-        let r = f();
-        match r {
-            Ok(_)  => try!(txn.commit()),
-            Err(_) => try!(txn.rollback()),
+        let nested;
+
+        match self.in_txn.get() {
+            false => {
+                try!(self.exec("BEGIN DEFERRED"));
+                self.in_txn.set(true);
+                nested = false;
+            },
+            true  => {
+                try!(self.exec("SAVEPOINT sp"));
+                nested = true;
+            },
         };
+
+        let r = f();
+
+        match r {
+            Ok(_) => match nested {
+                false => {
+                    try!(self.exec("COMMIT"));
+                    self.in_txn.set(false);
+                },
+                true => try!(self.exec("RELEASE sp")),
+            },
+            Err(_) => match nested {
+                false => {
+                    try!(self.exec("ROLLBACK"));
+                    self.in_txn.set(false);
+                },
+                true => try!(self.exec("ROLLBACK TO sp")),
+            },
+        };
+
         r
     }
 
