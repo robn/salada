@@ -2,6 +2,8 @@ use rusqlite::{SqliteConnection, SqliteError};
 use rusqlite::types::{ToSql, FromSql};
 use rustc_serialize::json::{Json, ParserError};
 use jmap::util::{FromJson, ParseError};
+use jmap::util::Presence::Present;
+use jmap::method::{MethodError, ErrorDescription};
 use jmap::contact::Contact;
 use std::error::Error;
 use std::convert::From;
@@ -98,6 +100,15 @@ impl From<ParseError> for DbError {
     }
 }
 
+impl From<DbError> for MethodError {
+    fn from(e: DbError) -> MethodError {
+        match e {
+            StateTooOld      => MethodError::CannotCalculateChanges,
+            InternalError(_) => MethodError::InternalError(Present(ErrorDescription(format!("{}", e)))),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Db {
     conn:   SqliteConnection,
@@ -105,7 +116,7 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn open() -> Result<Db,Box<Error>> {
+    pub fn open() -> Result<Db,DbError> {
         //let conn = try!(SqliteConnection::open_in_memory());
         let conn = try!(SqliteConnection::open(&Path::new("db.sqlite")));
         let db = Db {
@@ -118,7 +129,7 @@ impl Db {
         Ok(db)
     }
 
-    pub fn transaction<F,T>(&self, f: F) -> Result<T,Box<Error>> where F: Fn() -> Result<T,Box<Error>> {
+    pub fn transaction<F,T>(&self, f: F) -> Result<T,DbError> where F: Fn() -> Result<T,DbError> {
         let nested;
 
         match self.in_txn.get() {
@@ -155,13 +166,13 @@ impl Db {
         r
     }
 
-    fn exec(&self, sql: &str, params: &[&ToSql]) -> Result<(),Box<Error>> {
+    fn exec(&self, sql: &str, params: &[&ToSql]) -> Result<(),DbError> {
         let mut stmt = try!(self.conn.prepare(sql));
         try!(stmt.execute(params));
         Ok(())
     }
 
-    fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,Box<Error>> where T: FromSql {
+    fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,DbError> where T: FromSql {
         let mut stmt = try!(self.conn.prepare(sql));
         let mut res = try!(stmt.query(params));
 
@@ -169,7 +180,7 @@ impl Db {
             None       => Ok(None),
             Some(next) =>
                 match next {
-                    Err(e)   => Err(Box::new(InternalError(format!("sqlite: {}", e)))),
+                    Err(e)   => Err(InternalError(format!("sqlite: {}", e))),
                     Ok(next) => {
                         let v: T = next.get(0);
                         Ok(Some(v))
@@ -178,7 +189,7 @@ impl Db {
         }
     }
 
-    fn version(&self) -> Result<u32,Box<Error>> {
+    fn version(&self) -> Result<u32,DbError> {
         let v = try!(self.exec_value::<i32>("PRAGMA user_version", &[]));
         match v {
             Some(v) => Ok(v as u32),
@@ -186,12 +197,12 @@ impl Db {
         }
     }
 
-    fn set_version(&self, v: u32) -> Result<(),Box<Error>> {
+    fn set_version(&self, v: u32) -> Result<(),DbError> {
         try!(self.exec(format!("PRAGMA user_version = {}", v as i32).as_ref(), &[]));
         Ok(())
     }
 
-    fn upgrade(&self) -> Result<(),Box<Error>> {
+    fn upgrade(&self) -> Result<(),DbError> {
         self.transaction(|| {
             let ver = try!(self.version());
             if ver == VERSION { return Ok(()) }
@@ -218,7 +229,7 @@ impl Db {
         })
     }
 
-    pub fn get_state(&self, userid: i64) -> Result<String,Box<Error>> {
+    pub fn get_state(&self, userid: i64) -> Result<String,DbError> {
         let objtype = 1; // XXX contacts are type 1 for now
 
         let params: Vec<&ToSql> = vec!(&userid, &objtype);
@@ -229,7 +240,7 @@ impl Db {
         }
     }
 
-    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,Box<Error>> {
+    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,DbError> {
         let objtype = 1; // XXX contacts are type 1 for now
 
         self.transaction(|| {
@@ -251,7 +262,7 @@ impl Db {
                     Some(v) => v <= modseq,
                 };
                 if let false = valid {
-                    return Err(Box::new(StateTooOld));
+                    return Err(StateTooOld);
                 }
 
                 sql.push_str(" AND modseq > ?");

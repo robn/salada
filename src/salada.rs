@@ -19,8 +19,7 @@ use hyper::header;
 use rustc_serialize::json::{Json,ToJson};
 
 use jmap::util::FromJson;
-use jmap::util::Presence::*;
-use jmap::method::{RequestBatch, ResponseBatch, MethodError, ErrorDescription, ClientId};
+use jmap::method::{RequestBatch, ResponseBatch, ClientId};
 use jmap::method::RequestMethod::*;
 use jmap::method::ResponseMethod::*;
 
@@ -48,7 +47,7 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
 
         rbatch.0.push(match res {
             Ok(r)  => r,
-            Err(e) => ResponseError(MethodError::InternalError(Present(ErrorDescription(format!("{}", e)))), method.client_id()),
+            Err(e) => ResponseError(e, method.client_id()),
         });
     }
 
