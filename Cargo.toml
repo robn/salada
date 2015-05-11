@@ -13,6 +13,7 @@ name = "salada"
 hyper = "*"
 rustc-serialize = "*"
 rusqlite = "*"
+uuid = "*"
 
 [dependencies.jmap]
 git = "https://github.com/robn/jmap-rs"

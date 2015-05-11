@@ -1,10 +1,12 @@
 use rusqlite::{SqliteConnection, SqliteError};
 use rusqlite::types::{ToSql, FromSql};
-use rustc_serialize::json::{Json, ParserError};
+use rustc_serialize::json::{Json, ToJson, ParserError};
+use uuid::Uuid;
 use jmap::util::{FromJson, ParseError};
 use jmap::util::Presence::Present;
-use jmap::method::{MethodError, ErrorDescription};
-use jmap::contact::Contact;
+use jmap::method::{MethodError, ErrorDescription, SetError};
+use jmap::contact::{Contact, PartialContact};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::convert::From;
 use std::cell::Cell;
@@ -24,6 +26,7 @@ CREATE TABLE records (
     userid      INTEGER NOT NULL,
     type        INTEGER NOT NULL,
     modseq      INTEGER NOT NULL,
+    deleted     INTEGER NOT NULL DEFAULT 0,
     json        TEXT NOT NULL,
     UNIQUE( id, userid )
 );
@@ -61,6 +64,7 @@ const UPGRADE_SQL: [&'static str; 1] = [
 #[derive(Clone, PartialEq, Debug)]
 pub enum DbError {
     StateTooOld,
+    StateMismatch,
     InternalError(String),
 }
 
@@ -68,6 +72,7 @@ impl Error for DbError {
     fn description(&self) -> &str {
         match *self {
             StateTooOld      => "state too old",
+            StateMismatch    => "state mismatch",
             InternalError(_) => "internal database error",
         }
     }
@@ -77,6 +82,7 @@ impl fmt::Display for DbError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
             StateTooOld          => "state too old".to_string(),
+            StateMismatch        => "state mismatch".to_string(),
             InternalError(ref e) => format!("internal database error: {}", e),
         }.to_string())
     }
@@ -104,6 +110,7 @@ impl From<DbError> for MethodError {
     fn from(e: DbError) -> MethodError {
         match e {
             StateTooOld      => MethodError::CannotCalculateChanges,
+            StateMismatch    => MethodError::StateMismatch,
             InternalError(_) => MethodError::InternalError(Present(ErrorDescription(format!("{}", e)))),
         }
     }
@@ -152,24 +159,27 @@ impl Db {
                     try!(self.exec("COMMIT", &[]));
                     self.in_txn.set(false);
                 },
-                true => try!(self.exec("RELEASE sp", &[])),
+                true => {
+                    try!(self.exec("RELEASE sp", &[]));
+                },
             },
             Err(_) => match nested {
                 false => {
                     try!(self.exec("ROLLBACK", &[]));
                     self.in_txn.set(false);
                 },
-                true => try!(self.exec("ROLLBACK TO sp", &[])),
+                true => {
+                    try!(self.exec("ROLLBACK TO sp", &[]));
+                },
             },
         };
 
         r
     }
 
-    fn exec(&self, sql: &str, params: &[&ToSql]) -> Result<(),DbError> {
+    fn exec(&self, sql: &str, params: &[&ToSql]) -> Result<usize,DbError> {
         let mut stmt = try!(self.conn.prepare(sql));
-        try!(stmt.execute(params));
-        Ok(())
+        Ok(try!(stmt.execute(params)) as usize)
     }
 
     fn exec_value<T>(&self, sql: &str, params: &[&ToSql]) -> Result<Option<T>,DbError> where T: FromSql {
@@ -240,13 +250,34 @@ impl Db {
         }
     }
 
+    pub fn check_state(&self, userid: i64, state: &String) -> Result<(),DbError> {
+        let s = try!(self.get_state(userid));
+        match s == *state {
+            true  => Ok(()),
+            false => Err(StateMismatch),
+        }
+    }
+
+    pub fn next_state(&self, userid: i64) -> Result<String,DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        let params: Vec<&ToSql> = vec!(&userid, &objtype);
+
+        self.transaction(|| {
+            if let 0 = try!(self.exec("UPDATE modseq SET modseq = (modseq+1) WHERE userid = ? AND type = ?", &params)) {
+                try!(self.exec("INSERT INTO modseq ( userid, type, modseq, low_modseq ) VALUES ( ?, ?, 1, 1 )", &params));
+            }
+            self.get_state(userid)
+        })
+    }
+
     pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,DbError> {
         let objtype = 1; // XXX contacts are type 1 for now
 
         self.transaction(|| {
             let modseq: i64;
 
-            let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ?".to_string();
+            let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ? AND deleted = 0".to_string();
             let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
 
             if let Some(ref since_state) = since_state {
@@ -297,6 +328,96 @@ impl Db {
             }
 
             Ok(records)
+        })
+    }
+
+    pub fn create_records(&self, userid: i64, create: &BTreeMap<String,PartialContact>) -> Result<(BTreeMap<String,PartialContact>,BTreeMap<String,SetError>),DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        // XXX spec doesn't list any reasons why a create could fail (SetError)
+        // so for now we'll always return an empty notCreated list
+        self.transaction(|| {
+            let mut stmt = try!(self.conn.prepare("INSERT INTO records ( userid, type, modseq, id, json ) VALUES ( ?, ?, (SELECT modseq FROM modseq WHERE userid = ? AND type = ?), ?, ?)"));
+            let params: Vec<&ToSql> = vec!(&userid, &objtype, &userid, &objtype);
+
+            // iterative style so we can use try!
+            let mut created = BTreeMap::new();
+            for (client_id, pc) in create.iter() {
+                let id = Uuid::new_v4().to_hyphenated_string();
+                let mut c = Contact::default().updated_with(&pc);
+                // XXX invalidArguments if incoming has an id already
+                c.id = id.clone();
+                let json = c.to_json().to_string();
+                let mut p = params.clone();
+                p.push(&c.id);
+                p.push(&json);
+                try!(stmt.execute(&p));
+                let mut cpc = PartialContact::default();
+                cpc.id = Present(id);
+                created.insert(client_id.clone(), cpc);
+            }
+            let not_created: BTreeMap<String,SetError> = BTreeMap::new();
+            Ok((created, not_created))
+        })
+    }
+
+    pub fn update_records(&self, userid: i64, update: &BTreeMap<String,PartialContact>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        // XXX spec doesn't list any reasons why a update could fail (SetError)
+        // so for now we'll always return an empty notUpdated list
+        self.transaction(|| {
+            let params: Vec<&ToSql> = vec!(&userid, &objtype);
+
+            let mut update_stmt = try!(self.conn.prepare("UPDATE records SET modseq = (SELECT modseq FROM modseq WHERE userid = ? AND type = ?), json = ? WHERE userid = ? AND type = ? AND id = ?"));
+
+            // iterative style so we can use try!
+            let mut updated = Vec::new();
+            for (id, pc) in update.iter() {
+                let mut get_p = params.clone();
+                get_p.push(id);
+                let json = try!(self.exec_value::<String>("SELECT json FROM records WHERE userid = ? AND type = ? AND deleted = 0 AND id = ?", &get_p)); // XXX stmt version of exec_value?
+
+                // XXX None means not found, must return some sane error
+
+                if let Some(j) = json {
+                    // XXX assuming parse success
+                    let c = Contact::from_json(&Json::from_str(j.as_ref()).unwrap()).unwrap().updated_with(&pc);
+                    // XXX invalidArguments if trying to change id (or other immutable params?)
+                    let new_json = c.to_json().to_string();
+                    let mut p = params.clone();
+                    p.push(&new_json);
+                    p.push(&userid); // XXX merp, I need a better way to build these
+                    p.push(&objtype);
+                    p.push(&c.id);
+                    try!(update_stmt.execute(&p));
+                    updated.push(id.clone());
+                }
+            }
+            let not_updated: BTreeMap<String,SetError> = BTreeMap::new();
+            Ok((updated, not_updated))
+        })
+    }
+
+    pub fn destroy_records(&self, userid: i64, destroy: &Vec<String>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        // XXX spec doesn't list any reasons why a destroy could fail (SetError)
+        // so for now we'll always return an empty notDestroyed list
+        self.transaction(|| {
+            let mut stmt = try!(self.conn.prepare("UPDATE records SET deleted = 1, modseq = (SELECT modseq FROM modseq WHERE userid = ? AND type = ?) WHERE userid = ? AND type = ? AND id = ? AND deleted = 0"));
+            let params: Vec<&ToSql> = vec!(&userid, &objtype, &userid, &objtype);
+
+            // iterative style so we can use try!
+            let mut destroyed = Vec::new();
+            for id in destroy.iter() {
+                let mut p = params.clone();
+                p.push(id);
+                try!(stmt.execute(&p));
+                destroyed.push(id.clone());
+            }
+            let not_destroyed: BTreeMap<String,SetError> = BTreeMap::new();
+            Ok((destroyed, not_destroyed))
         })
     }
 }
