@@ -136,21 +136,7 @@ impl Db {
         Ok(db)
     }
 
-    pub fn transaction<F,T>(&self, f: F) -> Result<T,DbError> where F: Fn() -> Result<T,DbError> {
-        let nested;
-
-        match self.in_txn.get() {
-            false => {
-                try!(self.exec("BEGIN DEFERRED", &[]));
-                self.in_txn.set(true);
-                nested = false;
-            },
-            true  => {
-                try!(self.exec("SAVEPOINT sp", &[]));
-                nested = true;
-            },
-        };
-
+    fn do_transaction<F,T>(&self, f: F, nested: bool) -> Result<T,DbError> where F: Fn() -> Result<T,DbError> {
         let r = f();
 
         match r {
@@ -175,6 +161,27 @@ impl Db {
         };
 
         r
+    }
+
+    pub fn exclusive<F,T>(&self, f: F) -> Result<T,DbError> where F: Fn() -> Result<T,DbError> {
+        try!(self.exec("BEGIN EXCLUSIVE", &[]));
+        self.in_txn.set(true);
+        self.do_transaction(f, false)
+    }
+
+    pub fn transaction<F,T>(&self, f: F) -> Result<T,DbError> where F: Fn() -> Result<T,DbError> {
+        let nested = match self.in_txn.get() {
+            false => {
+                try!(self.exec("BEGIN DEFERRED", &[]));
+                self.in_txn.set(true);
+                false
+            },
+            true  => {
+                try!(self.exec("SAVEPOINT sp", &[]));
+                true
+            },
+        };
+        self.do_transaction(f, nested)
     }
 
     fn exec(&self, sql: &str, params: &[&ToSql]) -> Result<usize,DbError> {

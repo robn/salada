@@ -55,7 +55,7 @@ impl ContactHandler for RequestContext {
     }
 
     fn set_contacts(&self, args: &SetRequestArgs) -> Result<SetResponseArgs,MethodError> {
-        let res = try!(self.db.transaction(|| {
+        let res = try!(self.db.exclusive(|| {
             if let Present(ref s) = args.if_in_state {
                 try!(self.db.check_state(self.userid, s));
             }
