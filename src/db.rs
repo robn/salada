@@ -65,6 +65,7 @@ const UPGRADE_SQL: [&'static str; 1] = [
 pub enum DbError {
     StateTooOld,
     StateMismatch,
+    TooManyChanges,
     InternalError(String),
 }
 
@@ -73,6 +74,7 @@ impl Error for DbError {
         match *self {
             StateTooOld      => "state too old",
             StateMismatch    => "state mismatch",
+            TooManyChanges   => "too many changes",
             InternalError(_) => "internal database error",
         }
     }
@@ -83,6 +85,7 @@ impl fmt::Display for DbError {
         write!(f, "{}", match *self {
             StateTooOld          => "state too old".to_string(),
             StateMismatch        => "state mismatch".to_string(),
+            TooManyChanges       => "too many changes".to_string(),
             InternalError(ref e) => format!("internal database error: {}", e),
         }.to_string())
     }
@@ -111,6 +114,7 @@ impl From<DbError> for MethodError {
         match e {
             StateTooOld      => MethodError::CannotCalculateChanges,
             StateMismatch    => MethodError::StateMismatch,
+            TooManyChanges   => MethodError::TooManyChanges,
             InternalError(_) => MethodError::InternalError(Present(ErrorDescription(format!("{}", e)))),
         }
     }
@@ -335,6 +339,76 @@ impl Db {
             }
 
             Ok(records)
+        })
+    }
+
+    pub fn get_record_updates(&self, userid: i64, since_state: &String, max_changes: Option<i64>) -> Result<(Vec<String>,Vec<String>),DbError> {
+        let objtype = 1; // XXX contacts are type 1 for now
+
+        self.transaction(|| {
+            let parsed = since_state.parse::<i64>();
+            let modseq = match parsed {
+                Err(_) => 0,
+                Ok(i)  => cmp::max(i,0),
+            };
+
+            let max;
+            let max1;
+
+            let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
+
+            let mv = try!(self.exec_value::<i64>("SELECT low_modseq FROM modseq WHERE userid = ? AND type = ?", params.as_ref()));
+            let valid = match mv {
+                None    => false,
+                Some(v) => v <= modseq,
+            };
+            if let false = valid {
+                return Err(StateTooOld);
+            }
+
+            params.push(&modseq);
+
+            let mut sql = " FROM records WHERE userid = ? AND type = ? AND modseq > ?".to_string();
+
+            if let Some(max_changes) = max_changes {
+                sql.push_str(" LIMIT ?");
+
+                max1 = max_changes + 1;
+                params.push(&max1);
+
+                let mut s = "SELECT COUNT(*)".to_string();
+                s.push_str(sql.as_ref());
+
+                let count = try!(self.exec_value::<i64>(s.as_ref(), params.as_ref())).unwrap();
+                if count >= max1 {
+                    return Err(TooManyChanges);
+                }
+
+                params.pop();
+                max = max_changes;
+                params.push(&max);
+            }
+
+            let mut s = "SELECT id,deleted".to_string();
+            s.push_str(sql.as_ref());
+
+            let mut stmt = try!(self.conn.prepare(s.as_ref()));
+            let res = try!(stmt.query(params.as_ref()));
+
+            let mut changed: Vec<String> = Vec::new();
+            let mut removed: Vec<String> = Vec::new();
+            for row in res {
+                if let Ok(ref r) = row {
+                    let id = r.get::<String>(0);
+                    let deleted = r.get::<i64>(1) == 1;
+                    match deleted {
+                        true  => removed.push(id),
+                        false => changed.push(id),
+                    }
+                }
+            }
+
+            Ok((changed, removed))
         })
     }
 

@@ -50,8 +50,27 @@ impl ContactHandler for RequestContext {
     }
 
     fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,MethodError> {
-        println!("get_contact_updates: {:?}", args);
-        Ok(GetUpdatesResponseArgs::default())
+        let (changed, removed, state) = try!(self.db.transaction(|| {
+            let max_changes = match args.max_changes.as_option() {
+                Some(i) => Some(*i as i64),
+                None    => None,
+            };
+            let (changed, removed) = try!(self.db.get_record_updates(self.userid, &args.since_state, max_changes));
+            Ok((
+                changed,
+                removed,
+                try!(self.db.get_state(self.userid)),
+            ))
+        }));
+
+        let response = GetUpdatesResponseArgs {
+            old_state: args.since_state.clone(),
+            new_state: state,
+            changed:   changed,
+            removed:   removed,
+        };
+
+        Ok(response)
     }
 
     fn set_contacts(&self, args: &SetRequestArgs) -> Result<SetResponseArgs,MethodError> {
