@@ -24,7 +24,7 @@ use hyper::header;
 
 use rustc_serialize::json::{Json,ToJson};
 
-use jmap::util::FromJson;
+use jmap::parse::FromJson;
 use jmap::method::{RequestBatch, ResponseBatch, ClientId};
 use jmap::method::RequestMethod::*;
 use jmap::method::ResponseMethod::*;

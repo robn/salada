@@ -1,7 +1,7 @@
 use std::default::Default;
 use std::collections::{HashSet, BTreeMap};
 use jmap::method::*;
-use jmap::util::Presence::*;
+use jmap::parse::Presence::*;
 
 use util::RequestContext;
 
