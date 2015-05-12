@@ -3,6 +3,7 @@ use std::collections::{HashSet, BTreeMap};
 use jmap::method::*;
 use jmap::parse::Presence::*;
 
+use db::DbRecordType;
 use util::RequestContext;
 
 pub trait ContactHandler {
@@ -15,8 +16,8 @@ impl ContactHandler for RequestContext {
     fn get_contacts(&self, args: &GetRequestArgs) -> Result<GetResponseArgs,MethodError> {
         let (records, state) = try!(self.db.transaction(|| {
             Ok((
-                try!(self.db.get_records(self.userid, args.ids.as_option(), args.since_state.as_option())),
-                try!(self.db.get_state(self.userid)),
+                try!(self.db.get_records(self.userid, DbRecordType::Contact, args.ids.as_option(), args.since_state.as_option())),
+                try!(self.db.get_state(self.userid, DbRecordType::Contact)),
             ))
         }));
 
@@ -55,11 +56,11 @@ impl ContactHandler for RequestContext {
                 Some(i) => Some(*i as i64),
                 None    => None,
             };
-            let (changed, removed) = try!(self.db.get_record_updates(self.userid, &args.since_state, max_changes));
+            let (changed, removed) = try!(self.db.get_record_updates(self.userid, DbRecordType::Contact, &args.since_state, max_changes));
             Ok((
                 changed,
                 removed,
-                try!(self.db.get_state(self.userid)),
+                try!(self.db.get_state(self.userid, DbRecordType::Contact)),
             ))
         }));
 
@@ -76,10 +77,10 @@ impl ContactHandler for RequestContext {
     fn set_contacts(&self, args: &SetRequestArgs) -> Result<SetResponseArgs,MethodError> {
         let res = try!(self.db.exclusive(|| {
             if let Present(ref s) = args.if_in_state {
-                try!(self.db.check_state(self.userid, s));
+                try!(self.db.check_state(self.userid, DbRecordType::Contact, s));
             }
 
-            let old_state = try!(self.db.get_state(self.userid));
+            let old_state = try!(self.db.get_state(self.userid, DbRecordType::Contact));
 
             let create = match args.create {
                 Present(ref c) if c.len() > 0 => Some(c),
@@ -103,21 +104,21 @@ impl ContactHandler for RequestContext {
                 return Ok(rargs);
             }
 
-            let new_state = try!(self.db.next_state(self.userid));
+            let new_state = try!(self.db.next_state(self.userid, DbRecordType::Contact));
 
             let (created, not_created) = match create {
                 None    => (BTreeMap::new(), BTreeMap::new()),
-                Some(c) => try!(self.db.create_records(self.userid, c)),
+                Some(c) => try!(self.db.create_records(self.userid, DbRecordType::Contact, c)),
             };
 
             let (updated, not_updated) = match update {
                 None    => (Vec::new(), BTreeMap::new()),
-                Some(u) => try!(self.db.update_records(self.userid, u)),
+                Some(u) => try!(self.db.update_records(self.userid, DbRecordType::Contact, u)),
             };
 
             let (destroyed, not_destroyed) = match destroy {
                 None    => (Vec::new(), BTreeMap::new()),
-                Some(d) => try!(self.db.destroy_records(self.userid, d)),
+                Some(d) => try!(self.db.destroy_records(self.userid, DbRecordType::Contact, d)),
             };
 
             Ok(SetResponseArgs {

@@ -120,6 +120,31 @@ impl From<DbError> for MethodError {
     }
 }
 
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum DbRecordType {
+    Contact,
+    ContactGroup,
+}
+
+impl DbRecordType {
+    fn to_num(&self) -> i32 {
+        match *self {
+            DbRecordType::Contact      => 1,
+            DbRecordType::ContactGroup => 2,
+        }
+    }
+
+    fn from_num(n: i32) -> DbRecordType {
+        match n {
+            1 => DbRecordType::Contact,
+            2 => DbRecordType::ContactGroup,
+            _ => panic!("unknown DB record type {}", n),
+        }
+    }
+}
+
+
 #[derive(Debug)]
 pub struct Db {
     conn:   SqliteConnection,
@@ -250,10 +275,10 @@ impl Db {
         })
     }
 
-    pub fn get_state(&self, userid: i64) -> Result<String,DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn get_state(&self, userid: i64, rectype: DbRecordType) -> Result<String,DbError> {
+        let rtype = rectype.to_num();
 
-        let params: Vec<&ToSql> = vec!(&userid, &objtype);
+        let params: Vec<&ToSql> = vec!(&userid, &rtype);
         let sv = try!(self.exec_value::<i64>("SELECT modseq FROM modseq WHERE userid = ? AND type = ?", params.as_ref()));
         match sv {
             None    => Ok("0".to_string()),
@@ -261,35 +286,35 @@ impl Db {
         }
     }
 
-    pub fn check_state(&self, userid: i64, state: &String) -> Result<(),DbError> {
-        let s = try!(self.get_state(userid));
+    pub fn check_state(&self, userid: i64, rectype: DbRecordType, state: &String) -> Result<(),DbError> {
+        let s = try!(self.get_state(userid, rectype));
         match s == *state {
             true  => Ok(()),
             false => Err(StateMismatch),
         }
     }
 
-    pub fn next_state(&self, userid: i64) -> Result<String,DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn next_state(&self, userid: i64, rectype: DbRecordType) -> Result<String,DbError> {
+        let rtype = rectype.to_num();
 
-        let params: Vec<&ToSql> = vec!(&userid, &objtype);
+        let params: Vec<&ToSql> = vec!(&userid, &rtype);
 
         self.transaction(|| {
             if let 0 = try!(self.exec("UPDATE modseq SET modseq = (modseq+1) WHERE userid = ? AND type = ?", &params)) {
                 try!(self.exec("INSERT INTO modseq ( userid, type, modseq, low_modseq ) VALUES ( ?, ?, 1, 1 )", &params));
             }
-            self.get_state(userid)
+            self.get_state(userid, rectype)
         })
     }
 
-    pub fn get_records(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn get_records(&self, userid: i64, rectype: DbRecordType, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<Contact>,DbError> {
+        let rtype = rectype.to_num();
 
         self.transaction(|| {
             let modseq: i64;
 
             let mut sql = "SELECT json FROM records WHERE userid = ? AND type = ? AND deleted = 0".to_string();
-            let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
+            let mut params: Vec<&ToSql> = vec!(&userid, &rtype);
 
             if let Some(ref since_state) = since_state {
                 let parsed = since_state.parse::<i64>();
@@ -342,8 +367,8 @@ impl Db {
         })
     }
 
-    pub fn get_record_updates(&self, userid: i64, since_state: &String, max_changes: Option<i64>) -> Result<(Vec<String>,Vec<String>),DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn get_record_updates(&self, userid: i64, rectype: DbRecordType, since_state: &String, max_changes: Option<i64>) -> Result<(Vec<String>,Vec<String>),DbError> {
+        let rtype = rectype.to_num();
 
         self.transaction(|| {
             let parsed = since_state.parse::<i64>();
@@ -355,7 +380,7 @@ impl Db {
             let max;
             let max1;
 
-            let mut params: Vec<&ToSql> = vec!(&userid, &objtype);
+            let mut params: Vec<&ToSql> = vec!(&userid, &rtype);
 
             let mv = try!(self.exec_value::<i64>("SELECT low_modseq FROM modseq WHERE userid = ? AND type = ?", params.as_ref()));
             let valid = match mv {
@@ -412,14 +437,14 @@ impl Db {
         })
     }
 
-    pub fn create_records(&self, userid: i64, create: &BTreeMap<String,PartialContact>) -> Result<(BTreeMap<String,PartialContact>,BTreeMap<String,SetError>),DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn create_records(&self, userid: i64, rectype: DbRecordType, create: &BTreeMap<String,PartialContact>) -> Result<(BTreeMap<String,PartialContact>,BTreeMap<String,SetError>),DbError> {
+        let rtype = rectype.to_num();
 
         // XXX spec doesn't list any reasons why a create could fail (SetError)
         // so for now we'll always return an empty notCreated list
         self.transaction(|| {
             let mut stmt = try!(self.conn.prepare("INSERT INTO records ( userid, type, modseq, id, json ) VALUES ( ?, ?, (SELECT modseq FROM modseq WHERE userid = ? AND type = ?), ?, ?)"));
-            let params: Vec<&ToSql> = vec!(&userid, &objtype, &userid, &objtype);
+            let params: Vec<&ToSql> = vec!(&userid, &rtype, &userid, &rtype);
 
             // iterative style so we can use try!
             let mut created = BTreeMap::new();
@@ -442,13 +467,13 @@ impl Db {
         })
     }
 
-    pub fn update_records(&self, userid: i64, update: &BTreeMap<String,PartialContact>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn update_records(&self, userid: i64, rectype: DbRecordType, update: &BTreeMap<String,PartialContact>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> {
+        let rtype = rectype.to_num();
 
         // XXX spec doesn't list any reasons why a update could fail (SetError)
         // so for now we'll always return an empty notUpdated list
         self.transaction(|| {
-            let params: Vec<&ToSql> = vec!(&userid, &objtype);
+            let params: Vec<&ToSql> = vec!(&userid, &rtype);
 
             let mut update_stmt = try!(self.conn.prepare("UPDATE records SET modseq = (SELECT modseq FROM modseq WHERE userid = ? AND type = ?), json = ? WHERE userid = ? AND type = ? AND id = ?"));
 
@@ -469,7 +494,7 @@ impl Db {
                     let mut p = params.clone();
                     p.push(&new_json);
                     p.push(&userid); // XXX merp, I need a better way to build these
-                    p.push(&objtype);
+                    p.push(&rtype);
                     p.push(&c.id);
                     try!(update_stmt.execute(&p));
                     updated.push(id.clone());
@@ -480,14 +505,14 @@ impl Db {
         })
     }
 
-    pub fn destroy_records(&self, userid: i64, destroy: &Vec<String>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> {
-        let objtype = 1; // XXX contacts are type 1 for now
+    pub fn destroy_records(&self, userid: i64, rectype: DbRecordType, destroy: &Vec<String>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> {
+        let rtype = rectype.to_num();
 
         // XXX spec doesn't list any reasons why a destroy could fail (SetError)
         // so for now we'll always return an empty notDestroyed list
         self.transaction(|| {
             let mut stmt = try!(self.conn.prepare("UPDATE records SET deleted = 1, modseq = (SELECT modseq FROM modseq WHERE userid = ? AND type = ?) WHERE userid = ? AND type = ? AND id = ? AND deleted = 0"));
-            let params: Vec<&ToSql> = vec!(&userid, &objtype, &userid, &objtype);
+            let params: Vec<&ToSql> = vec!(&userid, &rtype, &userid, &rtype);
 
             // iterative style so we can use try!
             let mut destroyed = Vec::new();
