@@ -14,6 +14,8 @@ hyper = "*"
 rustc-serialize = "*"
 rusqlite = "*"
 uuid = "*"
+log = "*"
+time = "*"
 
 [dependencies.jmap]
 git = "https://github.com/robn/jmap-rs"

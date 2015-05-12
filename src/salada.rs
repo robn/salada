@@ -3,7 +3,12 @@ extern crate rustc_serialize;
 extern crate rusqlite;
 extern crate jmap;
 extern crate uuid;
+extern crate time;
 
+#[macro_use]
+extern crate log;
+
+mod logger;
 mod db;
 mod util;
 mod contact;
@@ -70,7 +75,7 @@ fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
                       }
                   })
         .and_then(|res| res.end()) {
-            Err(e) => println!("response error: {}", e),
+            Err(e) => error!("response error: {}", e),
             _      => (),
         };
 }
@@ -86,30 +91,27 @@ fn http_handler(mut req: Request, mut res: Response) {
             (&Post, "/jmap") => {
                 match Json::from_reader(&mut req) {
                     Ok(j) => match RequestBatch::from_json(&j) {
-                        Ok(b) => {
-                            return finish_response(res, StatusCode::Ok, Some(jmap_handler(b).to_json().to_string().as_bytes()))
-                        },
-                        Err(e) => {
-                            println!("jmap parse error: {}", e);
-                            return finish_response(res, StatusCode::BadRequest, None)
-                        },
+                        Ok(b) =>
+                            finish_response(res, StatusCode::Ok, Some(jmap_handler(b).to_json().to_string().as_bytes())),
+                        Err(e) =>
+                            finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
                     },
-                    Err(e) => {
-                        println!("json parse error: {}", e);
-                        return finish_response(res, StatusCode::BadRequest, None)
-                    },
+                    Err(e) =>
+                        finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
                 }
             },
 
-            (_, "/jmap") => return finish_response(res, StatusCode::MethodNotAllowed, None),
-            _            => return finish_response(res, StatusCode::NotFound, None),
+            (_, "/jmap") => finish_response(res, StatusCode::MethodNotAllowed, None),
+            _            => finish_response(res, StatusCode::NotFound, None),
         },
-        _ => return finish_response(res, StatusCode::BadRequest, None)
+        _ => finish_response(res, StatusCode::BadRequest, None),
     };
 }
 
 fn main() {
+    logger::init().unwrap();
+
     let server = hyper::Server::http(http_handler);
     let _listen_guard = server.listen("127.0.0.1:3000").unwrap();
-    println!("Listening on http://127.0.0.1:3000/jmap");
+    info!("Listening on http://127.0.0.1:3000/jmap");
 }

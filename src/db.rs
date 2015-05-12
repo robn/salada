@@ -244,7 +244,7 @@ impl Db {
 
             try!(self.set_version(VERSION));
 
-            println!("upgraded db to version {}", VERSION);
+            info!("upgraded db to version {}", VERSION);
 
             Ok(())
         })
