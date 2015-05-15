@@ -5,6 +5,7 @@ use uuid::Uuid;
 use jmap::parse::{FromJson, ParseError};
 use jmap::parse::Presence::Present;
 use jmap::method::{MethodError, ErrorDescription, SetError};
+use jmap::record::Record;
 use jmap::contact::{Contact, PartialContact};
 use std::collections::BTreeMap;
 use std::error::Error;

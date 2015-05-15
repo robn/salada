@@ -1,19 +1,22 @@
 use std::default::Default;
 use std::collections::{HashSet, BTreeMap};
+
 use jmap::method::*;
 use jmap::parse::Presence::*;
+use jmap::record::Record;
+use jmap::contact::Contact;
 
 use db::DbRecordType;
 use util::RequestContext;
 
 pub trait ContactHandler {
-    fn get_contacts(&self, args: &GetRequestArgs)               -> Result<GetResponseArgs,MethodError>;
-    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,MethodError>;
-    fn set_contacts(&self, args: &SetRequestArgs)               -> Result<SetResponseArgs,MethodError>;
+    fn get_contacts(&self, args: &GetRequestArgs<Contact>)               -> Result<GetResponseArgs<Contact>,MethodError>;
+    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs<Contact>) -> Result<GetUpdatesResponseArgs<Contact>,MethodError>;
+    fn set_contacts(&self, args: &SetRequestArgs<Contact>)               -> Result<SetResponseArgs<Contact>,MethodError>;
 }
 
 impl ContactHandler for RequestContext {
-    fn get_contacts(&self, args: &GetRequestArgs) -> Result<GetResponseArgs,MethodError> {
+    fn get_contacts(&self, args: &GetRequestArgs<Contact>) -> Result<GetResponseArgs<Contact>,MethodError> {
         let (records, state) = try!(self.db.transaction(|| {
             Ok((
                 try!(self.db.get_records(self.userid, DbRecordType::Contact, args.ids.as_option(), args.since_state.as_option())),
@@ -45,12 +48,13 @@ impl ContactHandler for RequestContext {
             state: state,
             list: list,
             not_found: not_found,
+            ..Default::default()
         };
 
         Ok(response)
     }
 
-    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs) -> Result<GetUpdatesResponseArgs,MethodError> {
+    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs<Contact>) -> Result<GetUpdatesResponseArgs<Contact>,MethodError> {
         let (changed, removed, state) = try!(self.db.transaction(|| {
             let max_changes = match args.max_changes.as_option() {
                 Some(i) => Some(*i as i64),
@@ -69,12 +73,13 @@ impl ContactHandler for RequestContext {
             new_state: state,
             changed:   changed,
             removed:   removed,
+            ..Default::default()
         };
 
         Ok(response)
     }
 
-    fn set_contacts(&self, args: &SetRequestArgs) -> Result<SetResponseArgs,MethodError> {
+    fn set_contacts(&self, args: &SetRequestArgs<Contact>) -> Result<SetResponseArgs<Contact>,MethodError> {
         let res = try!(self.db.exclusive(|| {
             if let Present(ref s) = args.if_in_state {
                 try!(self.db.check_state(self.userid, DbRecordType::Contact, s));
@@ -130,6 +135,7 @@ impl ContactHandler for RequestContext {
                 not_created:   not_created,
                 not_updated:   not_updated,
                 not_destroyed: not_destroyed,
+                ..Default::default()
             })
         }));
 
