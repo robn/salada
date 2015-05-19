@@ -6,7 +6,7 @@ use record::RecordHandler;
 
 pub trait ContactHandler {
     fn get_contacts(&self, args: &GetRequestArgs<Contact>)               -> Result<GetResponseArgs<Contact>,MethodError>;
-    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs<Contact>) -> Result<GetUpdatesResponseArgs<Contact>,MethodError>;
+    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs<Contact>) -> Result<(GetUpdatesResponseArgs<Contact>,Option<GetResponseArgs<Contact>>),MethodError>;
     fn set_contacts(&self, args: &SetRequestArgs<Contact>)               -> Result<SetResponseArgs<Contact>,MethodError>;
 }
 
@@ -15,7 +15,7 @@ impl ContactHandler for RequestContext {
         self.get_records(args)
     }
 
-    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs<Contact>) -> Result<GetUpdatesResponseArgs<Contact>,MethodError> {
+    fn get_contact_updates(&self, args: &GetUpdatesRequestArgs<Contact>) -> Result<(GetUpdatesResponseArgs<Contact>,Option<GetResponseArgs<Contact>>),MethodError> {
         self.get_record_updates(args)
     }
 

@@ -9,7 +9,7 @@ use db::RecordType;
 
 pub trait RecordHandler<R: Record> {
     fn get_records(&self, args: &GetRequestArgs<R>)               -> Result<GetResponseArgs<R>,MethodError>;
-    fn get_record_updates(&self, args: &GetUpdatesRequestArgs<R>) -> Result<GetUpdatesResponseArgs<R>,MethodError>;
+    fn get_record_updates(&self, args: &GetUpdatesRequestArgs<R>) -> Result<(GetUpdatesResponseArgs<R>,Option<GetResponseArgs<R>>),MethodError>;
     fn set_records(&self, args: &SetRequestArgs<R>)               -> Result<SetResponseArgs<R>,MethodError>;
 }
 
@@ -49,7 +49,7 @@ impl<R: Record> RecordHandler<R> for RequestContext where R: RecordType {
         Ok(response)
     }
 
-    fn get_record_updates(&self, args: &GetUpdatesRequestArgs<R>) -> Result<GetUpdatesResponseArgs<R>,MethodError> {
+    fn get_record_updates(&self, args: &GetUpdatesRequestArgs<R>) -> Result<(GetUpdatesResponseArgs<R>,Option<GetResponseArgs<R>>),MethodError> {
         let (changed, removed, state) = try!(self.db.transaction(|| {
             let max_changes = match args.max_changes.as_option() {
                 Some(i) => Some(*i as i64),
@@ -71,7 +71,7 @@ impl<R: Record> RecordHandler<R> for RequestContext where R: RecordType {
             ..Default::default()
         };
 
-        Ok(response)
+        Ok((response,None))
     }
 
     fn set_records(&self, args: &SetRequestArgs<R>) -> Result<SetResponseArgs<R>,MethodError> {

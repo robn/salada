@@ -26,7 +26,7 @@ use hyper::header;
 use rustc_serialize::json::{Json,ToJson};
 
 use jmap::parse::FromJson;
-use jmap::method::{RequestBatch, ResponseBatch, ClientId};
+use jmap::method::{RequestBatch, ResponseBatch, ResponseMethod};
 use jmap::method::RequestMethod::*;
 use jmap::method::ResponseMethod::*;
 
@@ -45,22 +45,33 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
     };
 
     for method in batch.0.into_iter() {
-        let res = match method {
-            GetContacts(ref args, ref id)       => r.get_contacts(args).map(|a| Contacts(a, id.clone())),
-            GetContactUpdates(ref args, ref id) => r.get_contact_updates(args).map(|a| ContactUpdates(a, id.clone())),
-            SetContacts(ref args, ref id)       => r.set_contacts(args).map(|a| ContactsSet(a, id.clone())),
+        let rmethods: Vec<ResponseMethod> = match method {
+            GetContacts(args, id)
+                => vec!(r.get_contacts(&args).map(|a| Contacts(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            SetContacts(args, id)
+                => vec!(r.set_contacts(&args).map(|a| ContactsSet(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            GetContactUpdates(args, id) => r.get_contact_updates(&args).map(|a| {
+                match a {
+                    (a, Some(b)) => vec!(ContactUpdates(a, id.clone()), Contacts(b, id.clone())),
+                    (a, _)       => vec!(ContactUpdates(a, id.clone())),
+                }
+            }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
 
-            GetContactGroups(ref args, ref id)       => r.get_contactgroups(args).map(|a| ContactGroups(a, id.clone())),
-            GetContactGroupUpdates(ref args, ref id) => r.get_contactgroup_updates(args).map(|a| ContactGroupUpdates(a, id.clone())),
-            SetContactGroups(ref args, ref id)       => r.set_contactgroups(args).map(|a| ContactGroupsSet(a, id.clone())),
+            GetContactGroups(args, id)
+                => vec!(r.get_contactgroups(&args).map(|a| ContactGroups(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            SetContactGroups(args, id)
+                => vec!(r.set_contactgroups(&args).map(|a| ContactGroupsSet(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            GetContactGroupUpdates(args, id) => r.get_contactgroup_updates(&args).map(|a| {
+                match a {
+                    (a, Some(b)) => vec!(ContactGroupUpdates(a, id.clone()), ContactGroups(b, id.clone())),
+                    (a, _)       => vec!(ContactGroupUpdates(a, id.clone())),
+                }
+            }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
 
-            RequestError(ref args, ref id) => Ok(ResponseError(args.clone(), id.clone())),
+            RequestError(args, id) => vec!(ResponseError(args, id)),
         };
 
-        rbatch.0.push(match res {
-            Ok(r)  => r,
-            Err(e) => ResponseError(e, method.client_id()),
-        });
+        rbatch.0.extend(rmethods.into_iter());
     }
 
     rbatch
