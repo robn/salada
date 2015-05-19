@@ -123,13 +123,13 @@ impl From<DbError> for MethodError {
 
 
 pub trait RecordType {
-    fn record_type(&self) -> i32;
+    fn record_type() -> i32;
 }
-impl RecordType for Option<Contact> {
-    fn record_type(&self) -> i32 { 1 }
+impl RecordType for Contact {
+    fn record_type() -> i32 { 1 }
 }
-impl RecordType for Option<ContactGroup> {
-    fn record_type(&self) -> i32 { 2 }
+impl RecordType for ContactGroup {
+    fn record_type() -> i32 { 2 }
 }
 
 
@@ -263,8 +263,8 @@ impl Db {
         })
     }
 
-    pub fn get_state<R: Record>(&self, userid: i64) -> Result<String,DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn get_state<R: Record>(&self, userid: i64) -> Result<String,DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         let params: Vec<&ToSql> = vec!(&userid, &rectype);
         let sv = try!(self.exec_value::<i64>("SELECT modseq FROM modseq WHERE userid = ? AND type = ?", params.as_ref()));
@@ -274,7 +274,7 @@ impl Db {
         }
     }
 
-    pub fn check_state<R: Record>(&self, userid: i64, state: &String) -> Result<(),DbError> where Option<R>: RecordType {
+    pub fn check_state<R: Record>(&self, userid: i64, state: &String) -> Result<(),DbError> where R: RecordType {
         let s = try!(self.get_state::<R>(userid));
         match s == *state {
             true  => Ok(()),
@@ -282,8 +282,8 @@ impl Db {
         }
     }
 
-    pub fn next_state<R: Record>(&self, userid: i64) -> Result<String,DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn next_state<R: Record>(&self, userid: i64) -> Result<String,DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         let params: Vec<&ToSql> = vec!(&userid, &rectype);
 
@@ -291,12 +291,12 @@ impl Db {
             if let 0 = try!(self.exec("UPDATE modseq SET modseq = (modseq+1) WHERE userid = ? AND type = ?", &params)) {
                 try!(self.exec("INSERT INTO modseq ( userid, type, modseq, low_modseq ) VALUES ( ?, ?, 1, 1 )", &params));
             }
-            self.get_state(userid)
+            self.get_state::<R>(userid)
         })
     }
 
-    pub fn get_records<R: Record>(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<R>,DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn get_records<R: Record>(&self, userid: i64, ids: Option<&Vec<String>>, since_state: Option<&String>) -> Result<Vec<R>,DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         self.transaction(|| {
             let modseq: i64;
@@ -355,8 +355,8 @@ impl Db {
         })
     }
 
-    pub fn get_record_updates<R: Record>(&self, userid: i64, since_state: &String, max_changes: Option<i64>) -> Result<(Vec<String>,Vec<String>),DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn get_record_updates<R: Record>(&self, userid: i64, since_state: &String, max_changes: Option<i64>) -> Result<(Vec<String>,Vec<String>),DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         self.transaction(|| {
             let parsed = since_state.parse::<i64>();
@@ -425,8 +425,8 @@ impl Db {
         })
     }
 
-    pub fn create_records<R: Record>(&self, userid: i64, create: &BTreeMap<String,R::Partial>) -> Result<(BTreeMap<String,R::Partial>,BTreeMap<String,SetError>),DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn create_records<R: Record>(&self, userid: i64, create: &BTreeMap<String,R::Partial>) -> Result<(BTreeMap<String,R::Partial>,BTreeMap<String,SetError>),DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         // XXX spec doesn't list any reasons why a create could fail (SetError)
         // so for now we'll always return an empty notCreated list
@@ -453,8 +453,8 @@ impl Db {
         })
     }
 
-    pub fn update_records<R: Record>(&self, userid: i64, update: &BTreeMap<String,R::Partial>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn update_records<R: Record>(&self, userid: i64, update: &BTreeMap<String,R::Partial>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         // XXX spec doesn't list any reasons why a update could fail (SetError)
         // so for now we'll always return an empty notUpdated list
@@ -492,8 +492,8 @@ impl Db {
         })
     }
 
-    pub fn destroy_records<R: Record>(&self, userid: i64, destroy: &Vec<String>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> where Option<R>: RecordType {
-        let rectype = None::<R>.record_type();
+    pub fn destroy_records<R: Record>(&self, userid: i64, destroy: &Vec<String>) -> Result<(Vec<String>,BTreeMap<String,SetError>),DbError> where R: RecordType {
+        let rectype = R::record_type();
 
         // XXX spec doesn't list any reasons why a destroy could fail (SetError)
         // so for now we'll always return an empty notDestroyed list

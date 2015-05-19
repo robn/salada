@@ -13,12 +13,12 @@ pub trait RecordHandler<R: Record> {
     fn set_records(&self, args: &SetRequestArgs<R>)               -> Result<SetResponseArgs<R>,MethodError>;
 }
 
-impl<R: Record> RecordHandler<R> for RequestContext where Option<R>: RecordType {
+impl<R: Record> RecordHandler<R> for RequestContext where R: RecordType {
     fn get_records(&self, args: &GetRequestArgs<R>) -> Result<GetResponseArgs<R>,MethodError> {
         let (records, state): (Vec<R>, String) = try!(self.db.transaction(|| {
             Ok((
-                try!(self.db.get_records(self.userid, args.ids.as_option(), args.since_state.as_option())),
-                try!(self.db.get_state(self.userid)),
+                try!(self.db.get_records::<R>(self.userid, args.ids.as_option(), args.since_state.as_option())),
+                try!(self.db.get_state::<R>(self.userid)),
             ))
         }));
 
@@ -55,11 +55,11 @@ impl<R: Record> RecordHandler<R> for RequestContext where Option<R>: RecordType 
                 Some(i) => Some(*i as i64),
                 None    => None,
             };
-            let (changed, removed) = try!(self.db.get_record_updates(self.userid, &args.since_state, max_changes));
+            let (changed, removed) = try!(self.db.get_record_updates::<R>(self.userid, &args.since_state, max_changes));
             Ok((
                 changed,
                 removed,
-                try!(self.db.get_state(self.userid)),
+                try!(self.db.get_state::<R>(self.userid)),
             ))
         }));
 
@@ -77,10 +77,10 @@ impl<R: Record> RecordHandler<R> for RequestContext where Option<R>: RecordType 
     fn set_records(&self, args: &SetRequestArgs<R>) -> Result<SetResponseArgs<R>,MethodError> {
         let res = try!(self.db.exclusive(|| {
             if let Present(ref s) = args.if_in_state {
-                try!(self.db.check_state(self.userid, s));
+                try!(self.db.check_state::<R>(self.userid, s));
             }
 
-            let old_state = try!(self.db.get_state(self.userid));
+            let old_state = try!(self.db.get_state::<R>(self.userid));
 
             let create = match args.create {
                 Present(ref c) if c.len() > 0 => Some(c),
@@ -104,21 +104,21 @@ impl<R: Record> RecordHandler<R> for RequestContext where Option<R>: RecordType 
                 return Ok(rargs);
             }
 
-            let new_state = try!(self.db.next_state(self.userid));
+            let new_state = try!(self.db.next_state::<R>(self.userid));
 
             let (created, not_created) = match create {
                 None    => (BTreeMap::new(), BTreeMap::new()),
-                Some(c) => try!(self.db.create_records(self.userid, c)),
+                Some(c) => try!(self.db.create_records::<R>(self.userid, c)),
             };
 
             let (updated, not_updated) = match update {
                 None    => (Vec::new(), BTreeMap::new()),
-                Some(u) => try!(self.db.update_records(self.userid, u)),
+                Some(u) => try!(self.db.update_records::<R>(self.userid, u)),
             };
 
             let (destroyed, not_destroyed) = match destroy {
                 None    => (Vec::new(), BTreeMap::new()),
-                Some(d) => try!(self.db.destroy_records(self.userid, d)),
+                Some(d) => try!(self.db.destroy_records::<R>(self.userid, d)),
             };
 
             Ok(SetResponseArgs {
