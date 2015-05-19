@@ -12,6 +12,7 @@ mod db;
 mod util;
 mod record;
 mod contact;
+mod contactgroup;
 
 use std::default::Default;
 use std::io::Write;
@@ -31,6 +32,7 @@ use jmap::method::ResponseMethod::*;
 
 use util::RequestContext;
 use contact::ContactHandler;
+use contactgroup::ContactGroupHandler;
 use db::Db;
 
 
@@ -48,9 +50,11 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
             GetContactUpdates(ref args, ref id) => r.get_contact_updates(args).map(|a| ContactUpdates(a, id.clone())),
             SetContacts(ref args, ref id)       => r.set_contacts(args).map(|a| ContactsSet(a, id.clone())),
 
-            RequestError(ref args, ref id) => Ok(ResponseError(args.clone(), id.clone())),
+            GetContactGroups(ref args, ref id)       => r.get_contactgroups(args).map(|a| ContactGroups(a, id.clone())),
+            GetContactGroupUpdates(ref args, ref id) => r.get_contactgroup_updates(args).map(|a| ContactGroupUpdates(a, id.clone())),
+            SetContactGroups(ref args, ref id)       => r.set_contactgroups(args).map(|a| ContactGroupsSet(a, id.clone())),
 
-            _ => panic!("halp"),
+            RequestError(ref args, ref id) => Ok(ResponseError(args.clone(), id.clone())),
         };
 
         rbatch.0.push(match res {
