@@ -2,7 +2,6 @@ extern crate hyper;
 extern crate rustc_serialize;
 extern crate rusqlite;
 extern crate jmap;
-extern crate uuid;
 extern crate time;
 
 #[macro_use]
@@ -11,6 +10,7 @@ extern crate log;
 mod logger;
 mod db;
 mod util;
+mod record;
 mod contact;
 
 use std::default::Default;
@@ -49,6 +49,8 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
             SetContacts(ref args, ref id)       => r.set_contacts(args).map(|a| ContactsSet(a, id.clone())),
 
             RequestError(ref args, ref id) => Ok(ResponseError(args.clone(), id.clone())),
+
+            _ => panic!("halp"),
         };
 
         rbatch.0.push(match res {

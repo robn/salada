@@ -13,7 +13,6 @@ name = "salada"
 hyper = "*"
 rustc-serialize = "*"
 rusqlite = "*"
-uuid = "*"
 log = "*"
 time = "*"
 
