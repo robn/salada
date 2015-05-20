@@ -63,6 +63,21 @@ impl<R: Record> RecordHandler<R> for RequestContext where R: RecordType {
             ))
         }));
 
+        let records_response = match args.fetch_records {
+            Present(true) => {
+                let get_records_args = GetRequestArgs::<R> {
+                    ids:         Present(changed.clone()),
+                    properties:  args.fetch_record_properties.clone(),
+                    ..Default::default()
+                };
+                match self.get_records(&get_records_args) {
+                    Ok(r) => Some(r),
+                    _     => None, // XXX what should I do if getRecords fails?
+                }
+            },
+            _ => None,
+        };
+
         let response = GetUpdatesResponseArgs {
             old_state: args.since_state.clone(),
             new_state: state,
@@ -71,7 +86,7 @@ impl<R: Record> RecordHandler<R> for RequestContext where R: RecordType {
             ..Default::default()
         };
 
-        Ok((response,None))
+        Ok((response, records_response))
     }
 
     fn set_records(&self, args: &SetRequestArgs<R>) -> Result<SetResponseArgs<R>,MethodError> {
