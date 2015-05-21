@@ -1,6 +1,6 @@
 [package]
 name        = "salada"
-version     = "0.0.2"
+version     = "0.0.3"
 description = "JMAP server"
 license     = "MIT"
 authors     = [ "Robert Norris <robn@robn.io>" ]
@@ -10,7 +10,7 @@ repository  = "https://github.com/robn/salada"
 name = "salada"
 
 [dependencies]
-jmap = "*"
+jmap = "0.0.3"
 hyper = "*"
 rustc-serialize = "*"
 rusqlite = "*"
