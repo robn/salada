@@ -5,6 +5,7 @@ use jmap::parse::{FromJson, ParseError};
 use jmap::parse::Presence::Present;
 use jmap::method::{MethodError, ErrorDescription, SetError};
 use jmap::record::{Record, PartialRecord};
+use jmap::calendar::Calendar;
 use jmap::contact::Contact;
 use jmap::contactgroup::ContactGroup;
 use std::collections::BTreeMap;
@@ -130,6 +131,9 @@ impl RecordType for Contact {
 }
 impl RecordType for ContactGroup {
     fn record_type() -> i32 { 2 }
+}
+impl RecordType for Calendar {
+    fn record_type() -> i32 { 3 }
 }
 
 

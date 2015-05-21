@@ -11,6 +11,7 @@ mod logger;
 mod db;
 mod util;
 mod record;
+mod calendar;
 mod contact;
 mod contactgroup;
 
@@ -31,6 +32,7 @@ use jmap::method::RequestMethod::*;
 use jmap::method::ResponseMethod::*;
 
 use util::RequestContext;
+use calendar::CalendarHandler;
 use contact::ContactHandler;
 use contactgroup::ContactGroupHandler;
 use db::Db;
@@ -46,6 +48,17 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
 
     for method in batch.0.into_iter() {
         let rmethods: Vec<ResponseMethod> = match method {
+            GetCalendars(args, id)
+                => vec!(r.get_calendars(&args).map(|a| Calendars(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            SetCalendars(args, id)
+                => vec!(r.set_calendars(&args).map(|a| CalendarsSet(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            GetCalendarUpdates(args, id) => r.get_calendar_updates(&args).map(|a| {
+                match a {
+                    (a, Some(b)) => vec!(CalendarUpdates(a, id.clone()), Calendars(b, id.clone())),
+                    (a, _)       => vec!(CalendarUpdates(a, id.clone())),
+                }
+            }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
+
             GetContacts(args, id)
                 => vec!(r.get_contacts(&args).map(|a| Contacts(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
             SetContacts(args, id)
