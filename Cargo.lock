@@ -3,7 +3,7 @@ name = "salada"
 version = "0.0.2"
 dependencies = [
  "hyper 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "jmap 0.0.2 (git+https://github.com/robn/jmap-rs)",
+ "jmap 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusqlite 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "jmap"
 version = "0.0.2"
-source = "git+https://github.com/robn/jmap-rs#b218bc08d1db8f302d34fe105f5b3b16850c6ad2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "rustc-serialize 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",

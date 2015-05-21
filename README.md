@@ -54,7 +54,7 @@ Currently targeting JMAP spec 2015-05-12.
 
 * Contacts
   * [X] Contacts
-  * [ ] Contact groups
+  * [X] Contact groups
 
 * Calendars
   * [ ] Calendars

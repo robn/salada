@@ -10,11 +10,9 @@ repository  = "https://github.com/robn/salada"
 name = "salada"
 
 [dependencies]
+jmap = "*"
 hyper = "*"
 rustc-serialize = "*"
 rusqlite = "*"
 log = "*"
 time = "*"
-
-[dependencies.jmap]
-git = "https://github.com/robn/jmap-rs"
