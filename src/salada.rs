@@ -14,6 +14,7 @@ mod record;
 mod calendar;
 mod contact;
 mod contactgroup;
+mod mailbox;
 
 use std::default::Default;
 use std::io::Write;
@@ -35,6 +36,7 @@ use util::RequestContext;
 use calendar::CalendarHandler;
 use contact::ContactHandler;
 use contactgroup::ContactGroupHandler;
+use mailbox::MailboxHandler;
 use db::Db;
 
 
@@ -78,6 +80,17 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
                 match a {
                     (a, Some(b)) => vec!(ContactGroupUpdates(a, id.clone()), ContactGroups(b, id.clone())),
                     (a, _)       => vec!(ContactGroupUpdates(a, id.clone())),
+                }
+            }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
+
+            GetMailboxes(args, id)
+                => vec!(r.get_mailboxes(&args).map(|a| Mailboxes(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            SetMailboxes(args, id)
+                => vec!(r.set_mailboxes(&args).map(|a| MailboxesSet(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            GetMailboxUpdates(args, id) => r.get_mailbox_updates(&args).map(|a| {
+                match a {
+                    (a, Some(b)) => vec!(MailboxUpdates(a, id.clone()), Mailboxes(b, id.clone())),
+                    (a, _)       => vec!(MailboxUpdates(a, id.clone())),
                 }
             }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
 
