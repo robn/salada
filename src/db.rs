@@ -6,6 +6,7 @@ use jmap::parse::Presence::Present;
 use jmap::method::{MethodError, ErrorDescription, SetError};
 use jmap::record::{Record, PartialRecord};
 use jmap::calendar::Calendar;
+use jmap::calendarevent::CalendarEvent;
 use jmap::contact::Contact;
 use jmap::contactgroup::ContactGroup;
 use jmap::mailbox::Mailbox;
@@ -136,11 +137,9 @@ impl RecordType for ContactGroup {
 impl RecordType for Calendar {
     fn record_type() -> i32 { 3 }
 }
-/*
 impl RecordType for CalendarEvent {
     fn record_type() -> i32 { 4 }
 }
-*/
 impl RecordType for Mailbox {
     fn record_type() -> i32 { 5 }
 }

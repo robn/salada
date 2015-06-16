@@ -12,6 +12,7 @@ mod db;
 mod util;
 mod record;
 mod calendar;
+mod calendarevent;
 mod contact;
 mod contactgroup;
 mod mailbox;
@@ -34,6 +35,7 @@ use jmap::method::ResponseMethod::*;
 
 use util::RequestContext;
 use calendar::CalendarHandler;
+use calendarevent::CalendarEventHandler;
 use contact::ContactHandler;
 use contactgroup::ContactGroupHandler;
 use mailbox::MailboxHandler;
@@ -58,6 +60,17 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
                 match a {
                     (a, Some(b)) => vec!(CalendarUpdates(a, id.clone()), Calendars(b, id.clone())),
                     (a, _)       => vec!(CalendarUpdates(a, id.clone())),
+                }
+            }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
+
+            GetCalendarEvents(args, id)
+                => vec!(r.get_calendar_events(&args).map(|a| CalendarEvents(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            SetCalendarEvents(args, id)
+                => vec!(r.set_calendar_events(&args).map(|a| CalendarEventsSet(a, id.clone())).unwrap_or_else(|e| ResponseError(e, id.clone()))),
+            GetCalendarEventUpdates(args, id) => r.get_calendar_event_updates(&args).map(|a| {
+                match a {
+                    (a, Some(b)) => vec!(CalendarEventUpdates(a, id.clone()), CalendarEvents(b, id.clone())),
+                    (a, _)       => vec!(CalendarEventUpdates(a, id.clone())),
                 }
             }).unwrap_or_else(|e| vec!(ResponseError(e, id.clone()))),
 
