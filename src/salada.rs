@@ -120,7 +120,7 @@ fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
 }
 
 fn http_handler(mut req: Request, mut res: Response) {
-    res.headers_mut().set(header::Server("salada/0.0.3".to_string()));
+    res.headers_mut().set(header::Server("salada/0.0.4".to_string()));
 
     let uri = req.uri.clone();
 
