@@ -30,7 +30,7 @@ Once its up and running you can direct JMAP requests to http://localhost:3000/jm
 
 ## Status
 
-Currently targeting JMAP spec 2015-05-12.
+Currently targeting JMAP spec 2015-06-12.
 
 * Authentication
   * [ ] Service autodiscovery
@@ -44,7 +44,7 @@ Currently targeting JMAP spec 2015-05-12.
   * [ ] Sharing
 
 * Mail
-  * [ ] Mailboxes
+  * [X] Mailboxes
   * [ ] Messages
   * [ ] Message copy
   * [ ] Message reporting
@@ -57,8 +57,8 @@ Currently targeting JMAP spec 2015-05-12.
   * [X] Contact groups
 
 * Calendars
-  * [ ] Calendars
-  * [ ] Calendar events
+  * [X] Calendars
+  * [X] Calendar events
   * [ ] Calendar lists (queries/search)
   * [ ] Alerts
 
