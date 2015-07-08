@@ -150,7 +150,6 @@ fn http_handler(mut req: Request, mut res: Response) {
 fn main() {
     logger::init().unwrap();
 
-    let server = hyper::Server::http(http_handler);
-    let _listen_guard = server.listen("127.0.0.1:3000").unwrap();
+    hyper::Server::http("127.0.0.1:3000").unwrap().handle(http_handler).unwrap();
     info!("Listening on http://127.0.0.1:3000/jmap");
 }
