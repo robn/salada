@@ -14,9 +14,12 @@ mod record;
 
 use std::default::Default;
 use std::io::Write;
+use std::io::Read;
+
+use std::fs::File;
 
 use hyper::server::{Request, Response};
-use hyper::method::Method::Post;
+use hyper::method::Method::{Post, Get};
 use hyper::status::StatusCode;
 use hyper::uri::RequestUri::AbsolutePath;
 use hyper::header;
@@ -99,6 +102,13 @@ fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
     rbatch
 }
 
+fn file_handler(path: &String) -> String {
+    let mut f = File::open(String::from("client")+path).unwrap();
+    let mut s = String::new();
+    f.read_to_string(&mut s).unwrap();
+    s
+}
+
 fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
     *res.status_mut() = code;
 
@@ -122,34 +132,36 @@ fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
 fn http_handler(mut req: Request, mut res: Response) {
     res.headers_mut().set(header::Server("salada/0.0.5".to_string()));
 
+    let method = req.method.clone();
     let uri = req.uri.clone();
 
-    match uri {
-        AbsolutePath(ref path) => match (&req.method, &path[..]) {
-
-            (&Post, "/jmap") => {
-                match Json::from_reader(&mut req) {
-                    Ok(j) => match RequestBatch::from_json(&j) {
-                        Ok(b) =>
-                            finish_response(res, StatusCode::Ok, Some(jmap_handler(b).to_json().to_string().as_bytes())),
-                        Err(e) =>
-                            finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
-                    },
+    match (method, uri) {
+        (Post, AbsolutePath(ref path)) if path == "/jmap" => {
+            match Json::from_reader(&mut req) {
+                Ok(j) => match RequestBatch::from_json(&j) {
+                    Ok(b) =>
+                        finish_response(res, StatusCode::Ok, Some(jmap_handler(b).to_json().to_string().as_bytes())),
                     Err(e) =>
                         finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
-                }
-            },
-
-            (_, "/jmap") => finish_response(res, StatusCode::MethodNotAllowed, None),
-            _            => finish_response(res, StatusCode::NotFound, None),
+                },
+                Err(e) =>
+                    finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
+            }
         },
-        _ => finish_response(res, StatusCode::BadRequest, None),
+
+        (_, AbsolutePath(ref path)) if path == "/jmap" => finish_response(res, StatusCode::MethodNotAllowed, None),
+
+        (Get, AbsolutePath(ref path)) => {
+            finish_response(res, StatusCode::Ok, Some(file_handler(path).as_ref()))
+        },
+
+        _ => finish_response(res, StatusCode::NotFound, None),
     };
 }
 
 fn main() {
     logger::init().unwrap();
 
-    hyper::Server::http("127.0.0.1:3000").unwrap().handle(http_handler).unwrap();
     info!("Listening on http://127.0.0.1:3000/jmap");
+    hyper::Server::http("127.0.0.1:3000").unwrap().handle(http_handler).unwrap();
 }
