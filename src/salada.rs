@@ -36,6 +36,17 @@ use record::RecordHandler;
 use db::Db;
 
 
+struct StatusBody {
+    code: StatusCode,
+    body: Option<Vec<u8>>
+}
+impl StatusBody {
+    fn new(code: StatusCode, body: Option<Vec<u8>>) -> StatusBody {
+        StatusBody { code: code, body: body }
+    }
+}
+
+
 macro_rules! make_crud_method_dispatcher {
     ($method: expr, $rmethods: expr, $r: expr,
      $($ty: ty { $get: ident => $rget: ident, $set: ident => $rset: ident, $getup: ident => $rgetup: ident }),*) => {
@@ -58,48 +69,58 @@ macro_rules! make_crud_method_dispatcher {
 }
 
 
-fn jmap_handler(batch: RequestBatch) -> ResponseBatch {
-    let mut rbatch: ResponseBatch = ResponseBatch::default();
+fn jmap_handler(mut req: Request) -> StatusBody {
 
-    let r = RequestContext {
-        userid: 1, // XXX get userid from auth
-        db: Db::open().unwrap(),
-    };
+    match Json::from_reader(&mut req) {
+        Ok(j) => match RequestBatch::from_json(&j) {
+            Ok(b) => {
+                let mut rbatch: ResponseBatch = ResponseBatch::default();
 
-    for method in batch.0.into_iter() {
-        let rmethods: Vec<ResponseMethod>;
-        make_crud_method_dispatcher!(method, rmethods, r,
-            Calendar {
-                GetCalendars       => Calendars,
-                SetCalendars       => CalendarsSet,
-                GetCalendarUpdates => CalendarUpdates
-            },
-            CalendarEvent {
-                GetCalendarEvents       => CalendarEvents,
-                SetCalendarEvents       => CalendarEventsSet,
-                GetCalendarEventUpdates => CalendarEventUpdates
-            },
-            Contact {
-                GetContacts       => Contacts,
-                SetContacts       => ContactsSet,
-                GetContactUpdates => ContactUpdates
-            },
-            ContactGroup {
-                GetContactGroups       => ContactGroups,
-                SetContactGroups       => ContactGroupsSet,
-                GetContactGroupUpdates => ContactGroupUpdates
-            },
-            Mailbox {
-                GetMailboxes      => Mailboxes,
-                SetMailboxes      => MailboxesSet,
-                GetMailboxUpdates => MailboxUpdates
-            }
-        );
+                let r = RequestContext {
+                    userid: 1, // XXX get userid from auth
+                    db: Db::open().unwrap(),
+                };
 
-        rbatch.0.extend(rmethods.into_iter());
+                for method in b.0.into_iter() {
+                    let rmethods: Vec<ResponseMethod>;
+                    make_crud_method_dispatcher!(method, rmethods, r,
+                        Calendar {
+                            GetCalendars       => Calendars,
+                            SetCalendars       => CalendarsSet,
+                            GetCalendarUpdates => CalendarUpdates
+                        },
+                        CalendarEvent {
+                            GetCalendarEvents       => CalendarEvents,
+                            SetCalendarEvents       => CalendarEventsSet,
+                            GetCalendarEventUpdates => CalendarEventUpdates
+                        },
+                        Contact {
+                            GetContacts       => Contacts,
+                            SetContacts       => ContactsSet,
+                            GetContactUpdates => ContactUpdates
+                        },
+                        ContactGroup {
+                            GetContactGroups       => ContactGroups,
+                            SetContactGroups       => ContactGroupsSet,
+                            GetContactGroupUpdates => ContactGroupUpdates
+                        },
+                        Mailbox {
+                            GetMailboxes      => Mailboxes,
+                            SetMailboxes      => MailboxesSet,
+                            GetMailboxUpdates => MailboxUpdates
+                        }
+                    );
+
+                    rbatch.0.extend(rmethods.into_iter());
+                }
+
+                StatusBody::new(StatusCode::Ok, Some(rbatch.to_json().to_string().into_bytes()))
+            },
+            Err(e) =>
+                StatusBody::new(StatusCode::BadRequest, Some(e.to_string().into_bytes())),
+        },
+        Err(e) => StatusBody::new(StatusCode::BadRequest, Some(e.to_string().into_bytes())),
     }
-
-    rbatch
 }
 
 fn file_handler(path: &String) -> String {
@@ -109,12 +130,12 @@ fn file_handler(path: &String) -> String {
     s
 }
 
-fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
-    *res.status_mut() = code;
+fn finish_response(mut res: Response, out: StatusBody) {
+    *res.status_mut() = out.code;
 
     match res.start()
         .and_then(|mut res|
-                  match body {
+                  match out.body {
                       Some(ref b) => {
                           try!(res.write_all(b));
                           Ok(res)
@@ -129,33 +150,24 @@ fn finish_response(mut res: Response, code: StatusCode, body: Option<&[u8]>) {
         };
 }
 
-fn http_handler(mut req: Request, mut res: Response) {
+fn http_handler(req: Request, mut res: Response) {
     res.headers_mut().set(header::Server("salada/0.0.5".to_string()));
 
     let method = req.method.clone();
     let uri = req.uri.clone();
 
     match (method, uri) {
-        (Post, AbsolutePath(ref path)) if path == "/jmap" => {
-            match Json::from_reader(&mut req) {
-                Ok(j) => match RequestBatch::from_json(&j) {
-                    Ok(b) =>
-                        finish_response(res, StatusCode::Ok, Some(jmap_handler(b).to_json().to_string().as_bytes())),
-                    Err(e) =>
-                        finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
-                },
-                Err(e) =>
-                    finish_response(res, StatusCode::BadRequest, Some(e.to_string().into_bytes().as_ref())),
-            }
-        },
+        (Post, AbsolutePath(ref path)) if path == "/jmap" =>
+            finish_response(res, jmap_handler(req)),
 
-        (_, AbsolutePath(ref path)) if path == "/jmap" => finish_response(res, StatusCode::MethodNotAllowed, None),
+        (_, AbsolutePath(ref path)) if path == "/jmap" =>
+            finish_response(res, StatusBody::new(StatusCode::MethodNotAllowed, None)),
 
         (Get, AbsolutePath(ref path)) => {
-            finish_response(res, StatusCode::Ok, Some(file_handler(path).as_ref()))
+            finish_response(res, StatusBody::new(StatusCode::Ok, Some(file_handler(path).into_bytes())))
         },
 
-        _ => finish_response(res, StatusCode::NotFound, None),
+        _ => finish_response(res, StatusBody::new(StatusCode::NotFound, None)),
     };
 }
 
