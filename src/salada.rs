@@ -13,8 +13,7 @@ mod util;
 mod record;
 
 use std::default::Default;
-use std::io::Write;
-use std::io::Read;
+use std::io::{Read, Write, ErrorKind};
 
 use std::fs::File;
 
@@ -123,11 +122,23 @@ fn jmap_handler(mut req: Request) -> StatusBody {
     }
 }
 
-fn file_handler(path: &String) -> String {
-    let mut f = File::open(String::from("client")+path).unwrap();
-    let mut s = String::new();
-    f.read_to_string(&mut s).unwrap();
-    s
+fn file_handler(path: &String) -> StatusBody {
+    match File::open(String::from("client") + if path == "/" { "/index.html" } else { path }) {
+        Err(ref e) => match e.kind() {
+            ErrorKind::NotFound => StatusBody::new(StatusCode::NotFound, None),
+            // XXX others
+            _ => StatusBody::new(StatusCode::InternalServerError, Some(format!("{}", e).into_bytes())),
+        },
+        Ok(ref mut f) => {
+            let mut s = String::new();
+            match f.read_to_string(&mut s) {
+                Err(ref e) =>
+                    StatusBody::new(StatusCode::InternalServerError, Some(format!("{}", e).into_bytes())),
+                _ =>
+                    StatusBody::new(StatusCode::Ok, Some(s.into_bytes())),
+            }
+        },
+    }
 }
 
 fn finish_response(mut res: Response, out: StatusBody) {
@@ -160,14 +171,10 @@ fn http_handler(req: Request, mut res: Response) {
         (Post, AbsolutePath(ref path)) if path == "/jmap" =>
             finish_response(res, jmap_handler(req)),
 
-        (_, AbsolutePath(ref path)) if path == "/jmap" =>
-            finish_response(res, StatusBody::new(StatusCode::MethodNotAllowed, None)),
+        (Get, AbsolutePath(ref path)) =>
+            finish_response(res, file_handler(path)),
 
-        (Get, AbsolutePath(ref path)) => {
-            finish_response(res, StatusBody::new(StatusCode::Ok, Some(file_handler(path).into_bytes())))
-        },
-
-        _ => finish_response(res, StatusBody::new(StatusCode::NotFound, None)),
+        _ => finish_response(res, StatusBody::new(StatusCode::MethodNotAllowed, None)),
     };
 }
 
