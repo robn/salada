@@ -18,7 +18,7 @@ use std::io::{Read, Write, ErrorKind};
 use std::fs::File;
 
 use hyper::server::{Request, Response};
-use hyper::method::Method::{Post, Get};
+use hyper::method::Method::{Post, Get, Head};
 use hyper::status::StatusCode;
 use hyper::uri::RequestUri::AbsolutePath;
 use hyper::header;
@@ -122,7 +122,7 @@ fn jmap_handler(mut req: Request) -> StatusBody {
     }
 }
 
-fn file_handler(path: &String) -> StatusBody {
+fn file_handler(path: &String, include_body: bool) -> StatusBody {
     match File::open(String::from("client") + if path == "/" { "/index.html" } else { path }) {
         Err(ref e) => match e.kind() {
             ErrorKind::NotFound => StatusBody::new(StatusCode::NotFound, None),
@@ -130,12 +130,17 @@ fn file_handler(path: &String) -> StatusBody {
             _ => StatusBody::new(StatusCode::InternalServerError, Some(format!("{}", e).into_bytes())),
         },
         Ok(ref mut f) => {
-            let mut s = String::new();
-            match f.read_to_string(&mut s) {
-                Err(ref e) =>
-                    StatusBody::new(StatusCode::InternalServerError, Some(format!("{}", e).into_bytes())),
-                _ =>
-                    StatusBody::new(StatusCode::Ok, Some(s.into_bytes())),
+            match include_body {
+                false => StatusBody::new(StatusCode::Ok, None),
+                true  => {
+                    let mut s = String::new();
+                    match f.read_to_string(&mut s) {
+                        Err(ref e) =>
+                            StatusBody::new(StatusCode::InternalServerError, Some(format!("{}", e).into_bytes())),
+                        _ =>
+                            StatusBody::new(StatusCode::Ok, Some(s.into_bytes())),
+                    }
+                },
             }
         },
     }
@@ -172,7 +177,10 @@ fn http_handler(req: Request, mut res: Response) {
             finish_response(res, jmap_handler(req)),
 
         (Get, AbsolutePath(ref path)) =>
-            finish_response(res, file_handler(path)),
+            finish_response(res, file_handler(path, true)),
+
+        (Head, AbsolutePath(ref path)) =>
+            finish_response(res, file_handler(path, false)),
 
         _ => finish_response(res, StatusBody::new(StatusCode::MethodNotAllowed, None)),
     };
