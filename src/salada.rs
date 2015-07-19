@@ -124,7 +124,12 @@ fn jmap_handler(mut req: Request) -> StatusBody {
 }
 
 fn file_handler(path: &String, include_body: bool) -> StatusBody {
-    match File::open(String::from("client") + if path == "/" { "/index.html" } else { path }) {
+    let mut filepath: String = (*path).clone();
+    if let Some(n) = filepath.find(|c| c == '?' || c == '#') {
+        filepath.truncate(n);
+    }
+
+    match File::open(String::from("client") + if filepath == "/" { "/index.html" } else { filepath.as_ref() }) {
         Err(ref e) => match e.kind() {
             ErrorKind::NotFound => StatusBody::new(StatusCode::NotFound, None),
             // XXX others
