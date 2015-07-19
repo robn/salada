@@ -18,6 +18,7 @@ use std::io::{Read, Write, ErrorKind};
 use std::fs::File;
 
 use hyper::server::{Request, Response};
+use hyper::method::Method;
 use hyper::method::Method::{Post, Get, Head};
 use hyper::status::StatusCode;
 use hyper::uri::RequestUri::AbsolutePath;
@@ -146,8 +147,10 @@ fn file_handler(path: &String, include_body: bool) -> StatusBody {
     }
 }
 
-fn finish_response(mut res: Response, out: StatusBody) {
+fn finish_response(method: Method, path: &String, mut res: Response, out: StatusBody) {
     *res.status_mut() = out.code;
+
+    info!("HTTP: {} {} => {}", method, path, out.code);
 
     match res.start()
         .and_then(|mut res|
@@ -166,7 +169,7 @@ fn finish_response(mut res: Response, out: StatusBody) {
         };
 }
 
-fn http_handler(req: Request, mut res: Response) {
+fn http_handler(mut req: Request, mut res: Response) {
     res.headers_mut().set(header::Server("salada/0.0.5".to_string()));
 
     let method = req.method.clone();
@@ -174,15 +177,23 @@ fn http_handler(req: Request, mut res: Response) {
 
     match (method, uri) {
         (Post, AbsolutePath(ref path)) if path == "/jmap" =>
-            finish_response(res, jmap_handler(req)),
+            finish_response(Post, path, res, jmap_handler(req)),
 
         (Get, AbsolutePath(ref path)) =>
-            finish_response(res, file_handler(path, true)),
+            finish_response(Get, path, res, file_handler(path, true)),
 
         (Head, AbsolutePath(ref path)) =>
-            finish_response(res, file_handler(path, false)),
+            finish_response(Head, path, res, file_handler(path, false)),
 
-        _ => finish_response(res, StatusBody::new(StatusCode::MethodNotAllowed, None)),
+        (_, ref ap) => {
+            let s = match ap {
+                &AbsolutePath(ref u) => u,
+                _ => panic!("RequestUri not AbsolutePath?"),
+            };
+            let mut drain: Vec<u8> = vec!();
+            req.read_to_end(&mut drain).ok();
+            finish_response(req.method, &s, res, StatusBody::new(StatusCode::MethodNotAllowed, None))
+        },
     };
 }
 
