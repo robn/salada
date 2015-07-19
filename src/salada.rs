@@ -176,7 +176,7 @@ fn http_handler(mut req: Request, mut res: Response) {
     let uri = req.uri.clone();
 
     match (method, uri) {
-        (Post, AbsolutePath(ref path)) if path == "/jmap" =>
+        (Post, AbsolutePath(ref path)) if path == "/jmap/" =>
             finish_response(Post, path, res, jmap_handler(req)),
 
         (Get, AbsolutePath(ref path)) =>
