@@ -134,12 +134,12 @@ fn file_handler(path: &String, include_body: bool) -> StatusBody {
             match include_body {
                 false => StatusBody::new(StatusCode::Ok, None),
                 true  => {
-                    let mut s = String::new();
-                    match f.read_to_string(&mut s) {
+                    let mut buf: Vec<u8> = vec!();
+                    match f.read_to_end(&mut buf) {
                         Err(ref e) =>
                             StatusBody::new(StatusCode::InternalServerError, Some(format!("{}", e).into_bytes())),
                         _ =>
-                            StatusBody::new(StatusCode::Ok, Some(s.into_bytes())),
+                            StatusBody::new(StatusCode::Ok, Some(buf)),
                     }
                 },
             }
