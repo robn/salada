@@ -3,6 +3,7 @@ extern crate rustc_serialize;
 extern crate rusqlite;
 extern crate jmap;
 extern crate time;
+extern crate mime_guess;
 
 #[macro_use]
 extern crate log;
@@ -16,6 +17,7 @@ use std::default::Default;
 use std::io::{Read, Write, ErrorKind};
 
 use std::fs::File;
+use std::path::Path;
 
 use hyper::server::{Request, Response};
 use hyper::method::Method;
@@ -123,13 +125,16 @@ fn jmap_handler(mut req: Request) -> StatusBody {
     }
 }
 
-fn file_handler(path: &String, include_body: bool) -> StatusBody {
-    let mut filepath: String = (*path).clone();
-    if let Some(n) = filepath.find(|c| c == '?' || c == '#') {
-        filepath.truncate(n);
+fn file_handler(path: &String, res: &mut Response, include_body: bool) -> StatusBody {
+    let mut pathonly: String = (*path).clone();
+    if let Some(n) = pathonly.find(|c| c == '?' || c == '#') {
+        pathonly.truncate(n);
     }
 
-    match File::open(String::from("client") + if filepath == "/" { "/index.html" } else { filepath.as_ref() }) {
+    let fullpath = String::from("client") + if pathonly == "/" { "/index.html" } else { &pathonly };
+    let mimetype = mime_guess::guess_mime_type(&Path::new(&fullpath));
+
+    let sb = match File::open(fullpath) {
         Err(ref e) => match e.kind() {
             ErrorKind::NotFound => StatusBody::new(StatusCode::NotFound, None),
             // XXX others
@@ -149,7 +154,15 @@ fn file_handler(path: &String, include_body: bool) -> StatusBody {
                 },
             }
         },
+    };
+
+    let headers = res.headers_mut();
+    headers.set(header::ContentType(mimetype));
+    if let Some(ref b) = sb.body {
+        headers.set(header::ContentLength((*b).len() as u64));
     }
+
+    sb
 }
 
 fn finish_response(method: Method, path: &String, mut res: Response, out: StatusBody) {
@@ -181,14 +194,20 @@ fn http_handler(mut req: Request, mut res: Response) {
     let uri = req.uri.clone();
 
     match (method, uri) {
-        (Post, AbsolutePath(ref path)) if path == "/jmap/" =>
-            finish_response(Post, path, res, jmap_handler(req)),
+        (Post, AbsolutePath(ref path)) if path == "/jmap/" => {
+            let sb = jmap_handler(req);
+            finish_response(Post, path, res, sb)
+        },
 
-        (Get, AbsolutePath(ref path)) =>
-            finish_response(Get, path, res, file_handler(path, true)),
+        (Get, AbsolutePath(ref path)) => {
+            let sb = file_handler(path, &mut res, true);
+            finish_response(Get, path, res, sb)
+        },
 
-        (Head, AbsolutePath(ref path)) =>
-            finish_response(Head, path, res, file_handler(path, false)),
+        (Head, AbsolutePath(ref path)) => {
+            let sb = file_handler(path, &mut res, false);
+            finish_response(Head, path, res, sb)
+        },
 
         (_, ref ap) => {
             let s = match ap {
