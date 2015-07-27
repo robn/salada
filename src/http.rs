@@ -96,6 +96,11 @@ fn jmap_handler(mut req: Request) -> StatusBody {
                             GetMailboxes      => Mailboxes,
                             SetMailboxes      => MailboxesSet,
                             GetMailboxUpdates => MailboxUpdates
+                        },
+                        Message {
+                            GetMessages       => Messages,
+                            SetMessages       => MessagesSet,
+                            GetMessageUpdates => MessageUpdates
                         }
                     );
 

@@ -139,6 +139,9 @@ impl RecordType for CalendarEvent {
 impl RecordType for Mailbox {
     fn record_type() -> i32 { 5 }
 }
+impl RecordType for Message {
+    fn record_type() -> i32 { 6 }
+}
 
 
 #[derive(Debug)]
