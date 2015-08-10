@@ -10,7 +10,9 @@ extern crate log;
 
 mod logger;
 mod db;
-mod http;
+mod http_handler;
+mod jmap_handler;
+mod static_handler;
 mod util;
 mod record;
 
@@ -18,5 +20,5 @@ fn main() {
     logger::init().unwrap();
 
     info!("Listening on http://127.0.0.1:3000/jmap");
-    hyper::Server::http("127.0.0.1:3000").unwrap().handle(http::handler).unwrap();
+    hyper::Server::http("127.0.0.1:3000").unwrap().handle(http_handler::handler).unwrap();
 }
