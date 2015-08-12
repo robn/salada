@@ -8,6 +8,7 @@ use hyper::uri::RequestUri::AbsolutePath;
 use hyper::header;
 
 use jmap_handler::handler as jmap_handler;
+use upload_handler::handler as upload_handler;
 use static_handler::handler as static_handler;
 
 pub struct StatusBody {
@@ -51,6 +52,11 @@ pub fn handler(mut req: Request, mut res: Response) {
     match (method, uri) {
         (Post, AbsolutePath(ref path)) if path == "/jmap/" => {
             let sb = jmap_handler(req);
+            finish_response(Post, path, res, sb)
+        },
+
+        (Post, AbsolutePath(ref path)) if path == "/upload/" => {
+            let sb = upload_handler(req);
             finish_response(Post, path, res, sb)
         },
 

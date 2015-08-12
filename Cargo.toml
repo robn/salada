@@ -16,6 +16,7 @@ rusqlite = "*"
 log = "*"
 time = "*"
 mime_guess = "*"
+uuid = "*"
 
 [dependencies.jmap]
 git = "https://github.com/robn/jmap-rs"

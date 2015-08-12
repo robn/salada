@@ -4,6 +4,7 @@ extern crate rusqlite;
 extern crate jmap;
 extern crate time;
 extern crate mime_guess;
+extern crate uuid;
 
 #[macro_use]
 extern crate log;
@@ -12,6 +13,7 @@ mod logger;
 mod db;
 mod http_handler;
 mod jmap_handler;
+mod upload_handler;
 mod static_handler;
 mod util;
 mod record;
