@@ -1,3 +1,5 @@
+*ARCHIVED*. This implements a version of JMAP years old, and is likely also a very poor example of how to make a server in Rust. You don't want this.
+
 # salada
 
 A JMAP server
